@@ -1,0 +1,17 @@
+[project]
+name = "quick-pic"
+version = "0.1.0"
+description = "Quick screenshot tool with system tray and global hotkey"
+requires-python = ">=3.10"
+dependencies = [
+    "mss>=10.0.0",
+    "pynput>=1.7.7",
+    "Pillow>=10.0.0",
+]
+
+[project.scripts]
+quick-pic = "quick_pic.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
