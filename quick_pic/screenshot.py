@@ -1,6 +1,3 @@
-import os
-import shutil
-import subprocess
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -12,58 +9,49 @@ class ScreenshotCapture:
 
     @staticmethod
     def capture_fullscreen(config) -> Path:
-        if ScreenshotCapture.supports_spectacle():
-            return ScreenshotCapture._capture_with_spectacle(config, "-f")
-
         import mss
+        from PIL import Image
+
         with mss.mss() as sct:
-            img = sct.grab(sct.monitors[0])
-            return ScreenshotCapture._save_mss_image(config, img)
+            screenshot = sct.grab(sct.monitors[0])
+            image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+            return ScreenshotCapture._save_image(config, image)
 
     @staticmethod
-    def capture_interactive(config) -> Path:
-        if ScreenshotCapture.supports_spectacle():
-            return ScreenshotCapture._capture_with_spectacle(config, "-r")
-        raise RuntimeError("Interactive screenshot backend is unavailable")
+    def capture_selection(
+        config,
+        screenshot_path: Path,
+        rect: tuple[int, int, int, int],
+    ) -> Path:
+        from PIL import Image
+
+        x, y, w, h = rect
+        try:
+            with Image.open(screenshot_path) as image:
+                crop_box = (x, y, x + w, y + h)
+                cropped = image.crop(crop_box)
+                return ScreenshotCapture._save_image(config, cropped)
+        finally:
+            screenshot_path.unlink(missing_ok=True)
 
     @staticmethod
     def capture_area(config, rect: tuple[int, int, int, int]) -> Path:
         import mss
+        from PIL import Image
+
         x, y, w, h = rect
         region = {"left": x, "top": y, "width": w, "height": h}
         with mss.mss() as sct:
-            img = sct.grab(region)
-            return ScreenshotCapture._save_mss_image(config, img)
+            screenshot = sct.grab(region)
+            image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+            return ScreenshotCapture._save_image(config, image)
 
     @staticmethod
-    def supports_spectacle() -> bool:
-        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
-        return "KDE" in desktop and shutil.which("spectacle") is not None
-
-    @staticmethod
-    def _capture_with_spectacle(config, mode: str) -> Path:
+    def _save_image(config, image) -> Path:
         filepath = ScreenshotCapture._next_output_path(config)
-        subprocess.run(
-            [
-                "spectacle",
-                "-b",
-                "-n",
-                mode,
-                "-o",
-                str(filepath),
-            ],
-            check=True,
-        )
-        resolved = filepath.resolve()
-        logger.info(f"Screenshot saved via spectacle: {resolved}")
-        return resolved
-
-    @staticmethod
-    def _save_mss_image(config, img) -> Path:
-        import mss.tools
-
-        filepath = ScreenshotCapture._next_output_path(config)
-        mss.tools.to_png(img.rgb, img.size, output=str(filepath))
+        format_name = "JPEG" if config.format == "jpg" else "PNG"
+        save_image = image.convert("RGB") if format_name == "JPEG" else image
+        save_image.save(filepath, format=format_name)
         resolved = filepath.resolve()
         logger.info(f"Screenshot saved: {resolved}")
         return resolved

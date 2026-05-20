@@ -79,7 +79,13 @@ pystray 默认用 `Gtk.StatusIcon` (XEmbed 协议)，KDE Plasma 5+ 已弃用。�
 - 图标切换时会重建 SNI 对象，并发 `NewIcon` / `NewToolTip` / `PropertiesChanged`，再重新向 watcher 注册
 - 对象路径使用 `/StatusNotifierItem`
 
-KDE 环境下的区域截图优先走 `spectacle -r`，避免自绘选区 + `mss` 在某些会话里截出黑图。
+区域截图不再依赖外部截图工具。当前流程是：
+
+1. 先用 `mss` 抓一张全屏底图
+2. 用单个 GTK `DrawingArea` 直接绘制底图、外部遮罩和选区边框
+3. 选区完成后直接裁剪这张底图并保存
+
+这样不会再因为“选区窗口刚消失就重新抓屏”而截出黑图。
 
 ### mss 区域截屏
 

@@ -1,16 +1,18 @@
+from dataclasses import dataclass
 import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SelectionResult:
+    rect: tuple[int, int, int, int]
+    screenshot_path: Path
+
+
 class AreaSelector:
     """GTK3 fullscreen overlay for selecting a screen region.
-
-    Architecture:
-      Gtk.Overlay
-        ├── Gtk.Image (screenshot background, static, never redrawn)
-        └── Gtk.DrawingArea (transparent overlay for dim mask + selection rect)
 
     Press Escape or right-click to cancel. Left-drag to select.
     """
@@ -29,51 +31,47 @@ class AreaSelector:
         self._end_x = 0.0
         self._end_y = 0.0
         self._dragging = False
+        self._screenshot_path: Path | None = None
+        self._background_pixbuf = None
+        self._drawing = None
 
-    def run(self) -> tuple[int, int, int, int] | None:
+    def run(self) -> SelectionResult | None:
         import tempfile
         import mss
 
         # Take full screenshot for background
         screenshot_path = Path(tempfile.mktemp(suffix=".png"))
+        self._screenshot_path = screenshot_path
         with mss.mss() as sct:
             sct.shot(output=str(screenshot_path), mon=0)
 
         pixbuf = self._GdkPixbuf.Pixbuf.new_from_file(str(screenshot_path))
-        screenshot_path.unlink()
+        self._background_pixbuf = pixbuf
 
         # Build window
         win = self._Gtk.Window(type=self._Gtk.WindowType.POPUP)
         win.set_default_size(pixbuf.get_width(), pixbuf.get_height())
 
-        overlay = self._Gtk.Overlay()
-        win.add(overlay)
-
-        # Layer 1: static screenshot background
-        bg_image = self._Gtk.Image.new_from_pixbuf(pixbuf)
-        overlay.add(bg_image)
-
-        # Layer 2: transparent overlay for dim mask + selection rect
         drawing = self._Gtk.DrawingArea()
-        drawing.set_halign(self._Gtk.Align.FILL)
-        drawing.set_valign(self._Gtk.Align.FILL)
+        self._drawing = drawing
+        drawing.set_can_focus(True)
         drawing.connect("draw", self._on_draw_overlay)
-        overlay.add_overlay(drawing)
-
-        win.add_events(
+        drawing.add_events(
             self._Gdk.EventMask.BUTTON_PRESS_MASK
             | self._Gdk.EventMask.BUTTON_RELEASE_MASK
             | self._Gdk.EventMask.POINTER_MOTION_MASK
             | self._Gdk.EventMask.KEY_PRESS_MASK
         )
+        win.add(drawing)
 
-        win.connect("button-press-event", self._on_button_press)
-        win.connect("button-release-event", self._on_button_release)
-        win.connect("motion-notify-event", self._on_motion)
-        win.connect("key-press-event", self._on_key_press)
+        drawing.connect("button-press-event", self._on_button_press)
+        drawing.connect("button-release-event", self._on_button_release)
+        drawing.connect("motion-notify-event", self._on_motion)
+        drawing.connect("key-press-event", self._on_key_press)
 
         win.fullscreen()
         win.show_all()
+        drawing.grab_focus()
 
         # Grab input devices
         display = self._Gdk.Display.get_default()
@@ -117,21 +115,28 @@ class AreaSelector:
             _Gtk.main_iteration()
         _Gdk.flush()
         win.destroy()
-        return self._result
+        if self._result is None:
+            screenshot_path.unlink(missing_ok=True)
+            self._screenshot_path = None
+            return None
+        return SelectionResult(rect=self._result, screenshot_path=screenshot_path)
 
     def destroy(self) -> None:
         pass
 
     def _on_draw_overlay(self, widget, cr):
+        if self._background_pixbuf is not None:
+            self._Gdk.cairo_set_source_pixbuf(cr, self._background_pixbuf, 0, 0)
+            cr.paint()
+
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
 
-        # Semi-transparent dark mask over entire screen
-        cr.set_source_rgba(0, 0, 0, 0.45)
-        cr.rectangle(0, 0, w, h)
-        cr.fill()
-
         if not self._dragging:
+            # Semi-transparent dark mask over entire screen
+            cr.set_source_rgba(0, 0, 0, 0.45)
+            cr.rectangle(0, 0, w, h)
+            cr.fill()
             return
 
         x = min(self._start_x, self._end_x)
@@ -142,11 +147,17 @@ class AreaSelector:
         if rw < 2 or rh < 2:
             return
 
-        # Cut out selection region (clear operator to show background through)
-        cr.set_operator(1)  # CAIRO_OPERATOR_CLEAR
-        cr.rectangle(x, y, rw, rh)
+        # Draw dim mask only outside the selected region so the screenshot
+        # background remains fully visible inside the selection.
+        cr.set_source_rgba(0, 0, 0, 0.45)
+        cr.rectangle(0, 0, w, y)
         cr.fill()
-        cr.set_operator(2)  # CAIRO_OPERATOR_OVER
+        cr.rectangle(0, y, x, rh)
+        cr.fill()
+        cr.rectangle(x + rw, y, w - (x + rw), rh)
+        cr.fill()
+        cr.rectangle(0, y + rh, w, h - (y + rh))
+        cr.fill()
 
         # White border around selection
         cr.set_source_rgba(1, 1, 1, 0.9)
@@ -164,6 +175,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
+            widget.queue_draw()
         elif event.button == 3:
             self._Gtk.main_quit()
 
@@ -183,6 +195,7 @@ class AreaSelector:
                 return
 
             self._result = (x, y, w, h)
+            widget.queue_draw()
             self._Gtk.main_quit()
 
     def _on_motion(self, widget, event):
@@ -192,7 +205,7 @@ class AreaSelector:
             self._end_y = event.y
             # Only redraw if position changed enough to avoid jitter
             if abs(old_x - self._end_x) > 0.5 or abs(old_y - self._end_y) > 0.5:
-                widget.get_toplevel().get_child().get_children()[-1].queue_draw()
+                widget.queue_draw()
 
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk

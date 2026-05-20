@@ -47,13 +47,14 @@ class QuickPicApp:
     def _on_screenshot_triggered(self) -> None:
         """Area selection → capture → clipboard. Runs on hotkey daemon thread."""
         try:
-            if ScreenshotCapture.supports_spectacle():
-                path = ScreenshotCapture.capture_interactive(self._config)
-            else:
-                rect = self._request_area_selection()
-                if rect is None:
-                    return
-                path = ScreenshotCapture.capture_area(self._config, rect)
+            selection = self._request_area_selection()
+            if selection is None:
+                return
+            path = ScreenshotCapture.capture_selection(
+                self._config,
+                selection.screenshot_path,
+                selection.rect,
+            )
             ClipboardManager.set_path_async(str(path))
         except Exception:
             logger.exception("Screenshot capture failed")
@@ -65,7 +66,7 @@ class QuickPicApp:
         t = threading.Thread(target=self._on_screenshot_triggered, daemon=True)
         t.start()
 
-    def _request_area_selection(self) -> tuple[int, int, int, int] | None:
+    def _request_area_selection(self):
         """Show the area selector. Must run on GTK main thread."""
         from quick_pic.area_selector import AreaSelector
         from gi.repository import GLib
