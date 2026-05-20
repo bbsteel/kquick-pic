@@ -371,7 +371,6 @@ class AreaSelector:
                             color=self._selected_color(),
                         )
                     )
-                self._deactivate_box_tool()
             elif self._gesture_kind == "text":
                 text_rect = self._normalized_text_rect_within_selection((x, y, w, h))
                 if text_rect is not None:
@@ -383,12 +382,16 @@ class AreaSelector:
 
     def _on_motion(self, widget, event):
         if self._dragging:
+            previous_rect = self._drag_preview_screen_rect(
+                self._current_drag_rect(),
+                self._gesture_kind,
+            )
             old_x, old_y = self._end_x, self._end_y
             self._end_x = event.x
             self._end_y = event.y
             # Only redraw if position changed enough to avoid jitter
             if abs(old_x - self._end_x) > 0.5 or abs(old_y - self._end_y) > 0.5:
-                widget.queue_draw()
+                self._queue_drag_redraw(previous_rect)
 
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
@@ -482,6 +485,51 @@ class AreaSelector:
                 self._draw_rectangle_annotation(cr, annotation)
             else:
                 self._draw_text_annotation(cr, annotation)
+
+    def _drag_preview_screen_rect(
+        self,
+        drag_rect: tuple[int, int, int, int],
+        gesture_kind: str | None,
+    ) -> tuple[int, int, int, int] | None:
+        if gesture_kind == "select":
+            return drag_rect
+        if gesture_kind == "box":
+            return self._screen_rect_from_selection_relative(
+                self._relative_rect_within_selection(drag_rect)
+            )
+        if gesture_kind == "text":
+            return self._screen_rect_from_selection_relative(
+                self._normalized_text_rect_within_selection(drag_rect)
+            )
+        return None
+
+    def _screen_rect_from_selection_relative(
+        self,
+        rect: tuple[int, int, int, int] | None,
+    ) -> tuple[int, int, int, int] | None:
+        if rect is None or self._selection_rect is None:
+            return None
+        sx, sy, _, _ = self._selection_rect
+        x, y, w, h = rect
+        return (sx + x, sy + y, w, h)
+
+    def _queue_drag_redraw(self, previous_rect: tuple[int, int, int, int] | None) -> None:
+        if self._drawing is None:
+            return
+        for rect in (
+            previous_rect,
+            self._drag_preview_screen_rect(self._current_drag_rect(), self._gesture_kind),
+        ):
+            if rect is None:
+                continue
+            x, y, w, h = rect
+            padding = 24
+            self._drawing.queue_draw_area(
+                max(0, x - padding),
+                max(0, y - padding),
+                w + padding * 2,
+                h + padding * 2,
+            )
 
     def _draw_rectangle_annotation(self, cr, annotation: RectangleAnnotation, dashed: bool = False) -> None:
         if self._selection_rect is None:
@@ -645,9 +693,3 @@ class AreaSelector:
         self._pending_text_rect = None
         if self._drawing is not None:
             self._drawing.grab_focus()
-
-    def _deactivate_box_tool(self) -> None:
-        if self._box_button is not None and self._box_button.get_active():
-            self._box_button.set_active(False)
-        else:
-            self._set_active_tool(None)
