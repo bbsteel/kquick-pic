@@ -9,6 +9,20 @@ logger = logging.getLogger(__name__)
 class SelectionResult:
     rect: tuple[int, int, int, int]
     screenshot_path: Path
+    annotations: list["RectangleAnnotation | TextAnnotation"]
+
+
+@dataclass(frozen=True)
+class RectangleAnnotation:
+    rect: tuple[int, int, int, int]
+    color: tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class TextAnnotation:
+    rect: tuple[int, int, int, int]
+    text: str
+    color: tuple[int, int, int]
 
 
 class AreaSelector:
@@ -17,14 +31,23 @@ class AreaSelector:
     Press Escape or right-click to cancel. Left-drag to select.
     """
 
+    _TEXT_FONT = "Sans 20"
+    _TEXT_PADDING_X = 8
+    _TEXT_PADDING_Y = 6
+
     def __init__(self):
         import gi
         gi.require_version("Gtk", "3.0")
+        gi.require_version("Pango", "1.0")
+        gi.require_version("PangoCairo", "1.0")
         from gi.repository import Gtk, Gdk, GdkPixbuf
+        from gi.repository import Pango, PangoCairo
 
         self._Gtk = Gtk
         self._Gdk = Gdk
         self._GdkPixbuf = GdkPixbuf
+        self._Pango = Pango
+        self._PangoCairo = PangoCairo
         self._result: tuple[int, int, int, int] | None = None
         self._start_x = 0.0
         self._start_y = 0.0
@@ -34,6 +57,26 @@ class AreaSelector:
         self._screenshot_path: Path | None = None
         self._background_pixbuf = None
         self._drawing = None
+        self._window = None
+        self._container = None
+        self._selection_rect: tuple[int, int, int, int] | None = None
+        self._gesture_kind: str | None = None
+        self._annotations: list[RectangleAnnotation | TextAnnotation] = []
+        self._active_tool: str | None = None
+        self._toolbar = None
+        self._text_buffer = None
+        self._text_view = None
+        self._text_editor = None
+        self._text_editor_box = None
+        self._box_button = None
+        self._box_button_label = None
+        self._text_button = None
+        self._color_buttons: dict[str, object] = {}
+        self._color_picker_button = None
+        self._color_button_label = None
+        self._color_palette = None
+        self._pending_text_rect: tuple[int, int, int, int] | None = None
+        self._selected_color_value = (255, 0, 0)
 
     def run(self) -> SelectionResult | None:
         import tempfile
@@ -49,12 +92,17 @@ class AreaSelector:
         self._background_pixbuf = pixbuf
 
         # Build window
-        win = self._Gtk.Window(type=self._Gtk.WindowType.POPUP)
+        win = self._Gtk.Window(type=self._Gtk.WindowType.TOPLEVEL)
+        win.set_decorated(False)
+        win.set_keep_above(True)
+        win.set_accept_focus(True)
         win.set_default_size(pixbuf.get_width(), pixbuf.get_height())
+        self._window = win
 
         drawing = self._Gtk.DrawingArea()
         self._drawing = drawing
         drawing.set_can_focus(True)
+        drawing.set_size_request(pixbuf.get_width(), pixbuf.get_height())
         drawing.connect("draw", self._on_draw_overlay)
         drawing.add_events(
             self._Gdk.EventMask.BUTTON_PRESS_MASK
@@ -62,48 +110,115 @@ class AreaSelector:
             | self._Gdk.EventMask.POINTER_MOTION_MASK
             | self._Gdk.EventMask.KEY_PRESS_MASK
         )
-        win.add(drawing)
+        container = self._Gtk.Fixed()
+        self._container = container
+        container.put(drawing, 0, 0)
+        win.add(container)
+
+        toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=6)
+        toolbar.set_border_width(8)
+        box_button = self._Gtk.ToggleButton()
+        box_button_label = self._Gtk.Label()
+        box_button.add(box_button_label)
+        box_button.set_tooltip_text("Draw box")
+        text_button = self._Gtk.ToggleButton(label="T")
+        text_button.set_tooltip_text("Add text")
+        color_picker_button = self._Gtk.Button()
+        color_picker_button.set_tooltip_text("Choose color")
+        color_button_label = self._Gtk.Label()
+        color_picker_button.add(color_button_label)
+        confirm_button = self._Gtk.Button(label="✓")
+        confirm_button.set_tooltip_text("Confirm")
+        cancel_button = self._Gtk.Button(label="✕")
+        cancel_button.set_tooltip_text("Cancel")
+        box_button.connect("toggled", self._on_tool_toggled, "box")
+        text_button.connect("toggled", self._on_tool_toggled, "text")
+        color_picker_button.connect("clicked", self._toggle_color_palette)
+        confirm_button.connect("clicked", self._on_confirm)
+        cancel_button.connect("clicked", self._on_cancel)
+        toolbar.pack_start(box_button, False, False, 0)
+        toolbar.pack_start(color_picker_button, False, False, 0)
+        toolbar.pack_start(text_button, False, False, 0)
+        toolbar.pack_start(confirm_button, False, False, 0)
+        toolbar.pack_start(cancel_button, False, False, 0)
+        container.put(toolbar, 16, 16)
+        toolbar.hide()
+
+        color_palette = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=4)
+        color_palette.set_border_width(6)
+        for color_name, color_hex, rgb in (
+            ("red", "#ff0000", (255, 0, 0)),
+            ("green", "#00aa00", (0, 170, 0)),
+            ("blue", "#0080ff", (0, 128, 255)),
+            ("yellow", "#d4a000", (212, 160, 0)),
+        ):
+            color_button = self._Gtk.Button()
+            color_button.set_tooltip_text(color_name.title())
+            label = self._Gtk.Label()
+            label.set_markup(f'<span foreground="{color_hex}" size="x-large">■</span>')
+            color_button.add(label)
+            color_button.connect("clicked", self._on_color_selected, rgb)
+            color_palette.pack_start(color_button, False, False, 0)
+            self._color_buttons[color_name] = color_button
+        container.put(color_palette, 16, 56)
+        color_palette.hide()
+
+        text_view = self._Gtk.TextView()
+        text_view.set_wrap_mode(self._Gtk.WrapMode.WORD_CHAR)
+        text_view.set_can_focus(True)
+        text_view.set_left_margin(self._TEXT_PADDING_X)
+        text_view.set_right_margin(self._TEXT_PADDING_X)
+        text_view.set_top_margin(self._TEXT_PADDING_Y)
+        text_view.set_bottom_margin(self._TEXT_PADDING_Y)
+        text_view.modify_font(self._Pango.FontDescription(self._TEXT_FONT))
+        text_view.connect("focus-out-event", self._on_text_entry_focus_out)
+        text_buffer = text_view.get_buffer()
+        text_confirm_button = self._Gtk.Button(label="✓")
+        text_confirm_button.set_tooltip_text("Accept text")
+        text_confirm_button.connect("clicked", self._commit_text_entry)
+        text_cancel_button = self._Gtk.Button(label="✕")
+        text_cancel_button.set_tooltip_text("Cancel text")
+        text_cancel_button.connect("clicked", self._cancel_text_entry)
+        text_editor_frame = self._Gtk.Frame()
+        text_editor_frame.set_shadow_type(self._Gtk.ShadowType.IN)
+        text_editor_frame.add(text_view)
+        text_editor_buttons = self._Gtk.Box(orientation=self._Gtk.Orientation.VERTICAL, spacing=4)
+        text_editor_buttons.pack_start(text_confirm_button, False, False, 0)
+        text_editor_buttons.pack_start(text_cancel_button, False, False, 0)
+        text_editor = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=6)
+        text_editor.pack_start(text_editor_frame, False, False, 0)
+        text_editor.pack_start(text_editor_buttons, False, False, 0)
+        container.put(text_editor, 16, 16)
+        text_editor.hide()
+
+        self._toolbar = toolbar
+        self._text_buffer = text_buffer
+        self._text_view = text_view
+        self._text_editor = text_editor
+        self._text_editor_box = text_editor_frame
+        self._box_button = box_button
+        self._box_button_label = box_button_label
+        self._text_button = text_button
+        self._color_picker_button = color_picker_button
+        self._color_button_label = color_button_label
+        self._color_palette = color_palette
+        self._refresh_color_button()
+        self._refresh_box_button()
 
         drawing.connect("button-press-event", self._on_button_press)
         drawing.connect("button-release-event", self._on_button_release)
         drawing.connect("motion-notify-event", self._on_motion)
         drawing.connect("key-press-event", self._on_key_press)
+        win.connect("key-press-event", self._on_key_press)
 
         win.fullscreen()
         win.show_all()
+        toolbar.hide()
+        color_palette.hide()
+        text_editor.hide()
         drawing.grab_focus()
 
-        # Grab input devices
-        display = self._Gdk.Display.get_default()
-        seat = display.get_default_seat()
-        self._ptr_device = seat.get_pointer()
-        self._kbd_device = seat.get_keyboard()
-
-        self._ptr_device.grab(
-            win.get_window(),
-            self._Gdk.GrabOwnership.NONE,
-            True,
-            self._Gdk.EventMask.BUTTON_PRESS_MASK
-            | self._Gdk.EventMask.BUTTON_RELEASE_MASK
-            | self._Gdk.EventMask.POINTER_MOTION_MASK,
-            None,
-            self._Gdk.CURRENT_TIME,
-        )
-        if self._kbd_device:
-            self._kbd_device.grab(
-                win.get_window(),
-                self._Gdk.GrabOwnership.NONE,
-                True,
-                self._Gdk.EventMask.KEY_PRESS_MASK | self._Gdk.EventMask.KEY_RELEASE_MASK,
-                None,
-                self._Gdk.CURRENT_TIME,
-            )
-
         self._Gtk.main()
-
-        if self._kbd_device:
-            self._kbd_device.ungrab(self._Gdk.CURRENT_TIME)
-        self._ptr_device.ungrab(self._Gdk.CURRENT_TIME)
 
         # Ensure the overlay is fully removed from screen before caller
         # (e.g. mss) captures the framebuffer again.
@@ -119,7 +234,11 @@ class AreaSelector:
             screenshot_path.unlink(missing_ok=True)
             self._screenshot_path = None
             return None
-        return SelectionResult(rect=self._result, screenshot_path=screenshot_path)
+        return SelectionResult(
+            rect=self._result,
+            screenshot_path=screenshot_path,
+            annotations=list(self._annotations),
+        )
 
     def destroy(self) -> None:
         pass
@@ -132,20 +251,18 @@ class AreaSelector:
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
 
-        if not self._dragging:
+        active_rect = self._selection_rect
+        if active_rect is None and self._dragging and self._gesture_kind == "select":
+            active_rect = self._current_drag_rect()
+
+        if active_rect is None:
             # Semi-transparent dark mask over entire screen
             cr.set_source_rgba(0, 0, 0, 0.45)
             cr.rectangle(0, 0, w, h)
             cr.fill()
             return
 
-        x = min(self._start_x, self._end_x)
-        y = min(self._start_y, self._end_y)
-        rw = abs(self._end_x - self._start_x)
-        rh = abs(self._end_y - self._start_y)
-
-        if rw < 2 or rh < 2:
-            return
+        x, y, rw, rh = active_rect
 
         # Draw dim mask only outside the selected region so the screenshot
         # background remains fully visible inside the selection.
@@ -165,12 +282,52 @@ class AreaSelector:
         cr.rectangle(x + 1, y + 1, rw - 2, rh - 2)
         cr.stroke()
 
-        cr.set_line_width(1)
-        cr.set_dash([4, 4], 0)
+        self._draw_annotations(cr)
+
+        if self._dragging and self._gesture_kind in {"box", "text"}:
+            if self._gesture_kind == "text":
+                preview_rect = self._normalized_text_rect_within_selection(self._current_drag_rect())
+            else:
+                preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
+            if preview_rect is not None:
+                self._draw_rectangle_annotation(
+                    cr,
+                    RectangleAnnotation(
+                        rect=preview_rect,
+                        color=self._selected_color(),
+                    ),
+                    dashed=True,
+                )
+        elif self._pending_text_rect is not None:
+            self._draw_rectangle_annotation(
+                cr,
+                RectangleAnnotation(
+                    rect=self._pending_text_rect,
+                    color=self._selected_color(),
+                ),
+                dashed=True,
+            )
 
     def _on_button_press(self, widget, event):
-        if event.button == 1:
+        if event.button == 1 and self._selection_rect is None:
             self._dragging = True
+            self._gesture_kind = "select"
+            self._start_x = event.x
+            self._start_y = event.y
+            self._end_x = event.x
+            self._end_y = event.y
+            widget.queue_draw()
+        elif event.button == 1 and self._active_tool == "box" and self._point_in_selection(event.x, event.y):
+            self._dragging = True
+            self._gesture_kind = "box"
+            self._start_x = event.x
+            self._start_y = event.y
+            self._end_x = event.x
+            self._end_y = event.y
+            widget.queue_draw()
+        elif event.button == 1 and self._active_tool == "text" and self._point_in_selection(event.x, event.y):
+            self._dragging = True
+            self._gesture_kind = "text"
             self._start_x = event.x
             self._start_y = event.y
             self._end_x = event.x
@@ -191,12 +348,38 @@ class AreaSelector:
             h = int(abs(self._end_y - self._start_y))
 
             if w < 4 or h < 4:
+                self._dragging = False
+                self._gesture_kind = None
                 widget.queue_draw()
                 return
 
-            self._result = (x, y, w, h)
+            if self._gesture_kind == "select":
+                self._selection_rect = (x, y, w, h)
+                self._result = self._selection_rect
+                if self._toolbar:
+                    self._toolbar.show_all()
+                    self._position_toolbar()
+                if self._color_palette:
+                    self._color_palette.hide()
+                self._set_active_tool(None)
+            elif self._gesture_kind == "box":
+                annotation_rect = self._relative_rect_within_selection((x, y, w, h))
+                if annotation_rect is not None:
+                    self._annotations.append(
+                        RectangleAnnotation(
+                            rect=annotation_rect,
+                            color=self._selected_color(),
+                        )
+                    )
+                self._deactivate_box_tool()
+            elif self._gesture_kind == "text":
+                text_rect = self._normalized_text_rect_within_selection((x, y, w, h))
+                if text_rect is not None:
+                    self._show_text_entry(text_rect)
+
+            self._dragging = False
+            self._gesture_kind = None
             widget.queue_draw()
-            self._Gtk.main_quit()
 
     def _on_motion(self, widget, event):
         if self._dragging:
@@ -211,3 +394,260 @@ class AreaSelector:
         from gi.repository import Gdk
         if event.keyval == Gdk.KEY_Escape:
             self._Gtk.main_quit()
+
+    def _on_tool_toggled(self, button, tool_name: str) -> None:
+        if button.get_active():
+            if tool_name == "box" and self._text_button.get_active():
+                self._text_button.set_active(False)
+            elif tool_name == "text" and self._box_button.get_active():
+                self._box_button.set_active(False)
+            self._set_active_tool(tool_name)
+        elif self._active_tool == tool_name:
+            if tool_name == "text":
+                self._hide_text_editor()
+            self._set_active_tool(None)
+
+    def _on_confirm(self, button) -> None:
+        if self._selection_rect is None:
+            return
+        self._commit_text_entry()
+        self._result = self._selection_rect
+        self._Gtk.main_quit()
+
+    def _on_cancel(self, button) -> None:
+        self._result = None
+        self._Gtk.main_quit()
+
+    def _on_color_selected(self, button, color_value: tuple[int, int, int]) -> None:
+        self._selected_color_value = color_value
+        self._refresh_color_button()
+        self._refresh_box_button()
+        if self._color_palette is not None:
+            self._color_palette.hide()
+
+    def _current_drag_rect(self) -> tuple[int, int, int, int]:
+        return (
+            int(min(self._start_x, self._end_x)),
+            int(min(self._start_y, self._end_y)),
+            int(abs(self._end_x - self._start_x)),
+            int(abs(self._end_y - self._start_y)),
+        )
+
+    def _point_in_selection(self, x: float, y: float) -> bool:
+        if self._selection_rect is None:
+            return False
+        sx, sy, sw, sh = self._selection_rect
+        return sx <= x <= sx + sw and sy <= y <= sy + sh
+
+    def _relative_rect_within_selection(
+        self,
+        rect: tuple[int, int, int, int],
+    ) -> tuple[int, int, int, int] | None:
+        if self._selection_rect is None:
+            return None
+
+        x, y, w, h = rect
+        sx, sy, sw, sh = self._selection_rect
+        left = max(x, sx)
+        top = max(y, sy)
+        right = min(x + w, sx + sw)
+        bottom = min(y + h, sy + sh)
+
+        if right - left < 4 or bottom - top < 4:
+            return None
+
+        return (left - sx, top - sy, right - left, bottom - top)
+
+    def _normalized_text_rect_within_selection(
+        self,
+        rect: tuple[int, int, int, int],
+    ) -> tuple[int, int, int, int] | None:
+        text_rect = self._relative_rect_within_selection(rect)
+        if text_rect is None or self._selection_rect is None:
+            return None
+
+        x, y, w, h = text_rect
+        _, _, sw, sh = self._selection_rect
+        min_width = min(160, sw)
+        min_height = min(40, sh)
+        w = max(w, min_width)
+        h = max(h, min_height)
+        x = min(x, max(0, sw - w))
+        y = min(y, max(0, sh - h))
+        return (x, y, w, h)
+
+    def _draw_annotations(self, cr) -> None:
+        for annotation in self._annotations:
+            if isinstance(annotation, RectangleAnnotation):
+                self._draw_rectangle_annotation(cr, annotation)
+            else:
+                self._draw_text_annotation(cr, annotation)
+
+    def _draw_rectangle_annotation(self, cr, annotation: RectangleAnnotation, dashed: bool = False) -> None:
+        if self._selection_rect is None:
+            return
+        sx, sy, _, _ = self._selection_rect
+        x, y, w, h = annotation.rect
+        red, green, blue = annotation.color
+        cr.set_source_rgba(red / 255.0, green / 255.0, blue / 255.0, 0.95)
+        cr.set_line_width(3)
+        cr.set_dash([8, 4], 0 if dashed else 0)
+        if not dashed:
+            cr.set_dash([], 0)
+        cr.rectangle(sx + x + 1.5, sy + y + 1.5, max(1, w - 3), max(1, h - 3))
+        cr.stroke()
+        cr.set_dash([], 0)
+
+    def _draw_text_annotation(self, cr, annotation: TextAnnotation) -> None:
+        if self._selection_rect is None:
+            return
+        sx, sy, _, _ = self._selection_rect
+        x, y, w, h = annotation.rect
+        layout = self._PangoCairo.create_layout(cr)
+        layout.set_text(annotation.text, -1)
+        layout.set_font_description(self._Pango.FontDescription(self._TEXT_FONT))
+        layout.set_width(max(1, w - self._TEXT_PADDING_X * 2) * self._Pango.SCALE)
+        layout.set_wrap(self._Pango.WrapMode.WORD_CHAR)
+        cr.save()
+        cr.rectangle(sx + x, sy + y, w, h)
+        cr.clip()
+        draw_x = sx + x + self._TEXT_PADDING_X
+        draw_y = sy + y + self._TEXT_PADDING_Y
+        cr.set_source_rgba(0, 0, 0, 0.65)
+        cr.move_to(draw_x + 1, draw_y + 1)
+        self._PangoCairo.show_layout(cr, layout)
+        red, green, blue = annotation.color
+        cr.set_source_rgba(red / 255.0, green / 255.0, blue / 255.0, 0.95)
+        cr.move_to(draw_x, draw_y)
+        self._PangoCairo.show_layout(cr, layout)
+        cr.restore()
+
+    def _selected_color(self) -> tuple[int, int, int]:
+        return self._selected_color_value
+
+    def _position_toolbar(self) -> None:
+        if self._selection_rect is None or self._toolbar is None or self._container is None:
+            return
+        sx, sy, sw, sh = self._selection_rect
+        _, natural = self._toolbar.get_preferred_size()
+        toolbar_width = natural.width
+        toolbar_height = natural.height
+        screen_width = self._background_pixbuf.get_width()
+        screen_height = self._background_pixbuf.get_height()
+        x = max(16, min(sx, screen_width - toolbar_width - 16))
+        y = min(screen_height - toolbar_height - 16, sy + sh + 12)
+        self._container.move(self._toolbar, x, y)
+        self._position_color_palette(x, y + toolbar_height + 4)
+
+    def _set_active_tool(self, tool_name: str | None) -> None:
+        self._active_tool = tool_name
+        if self._window is None or self._window.get_window() is None:
+            return
+        cursor_name = "crosshair" if tool_name == "box" else None
+        cursor = None if cursor_name is None else self._Gdk.Cursor.new_from_name(
+            self._window.get_display(),
+            cursor_name,
+        )
+        self._window.get_window().set_cursor(cursor)
+
+    def _show_text_entry(self, text_rect: tuple[int, int, int, int]) -> None:
+        if (
+            self._selection_rect is None
+            or self._text_buffer is None
+            or self._text_view is None
+            or self._text_editor is None
+            or self._text_editor_box is None
+            or self._container is None
+        ):
+            return
+        sx, sy, sw, sh = self._selection_rect
+        tx, ty, tw, th = text_rect
+        self._text_editor_box.set_size_request(tw, th)
+        _, natural = self._text_editor.get_preferred_size()
+        editor_x = sx + tx
+        editor_y = sy + ty
+        if editor_x + natural.width > sx + sw:
+            editor_x = max(sx, sx + sw - natural.width)
+        if editor_y + natural.height > sy + sh:
+            editor_y = max(sy, sy + sh - natural.height)
+        self._pending_text_rect = text_rect
+        self._text_buffer.set_text("")
+        self._container.move(self._text_editor, editor_x, editor_y)
+        self._text_editor.show_all()
+        self._text_view.grab_focus()
+
+    def _commit_text_entry(self, widget=None) -> None:
+        if self._text_buffer is None or self._pending_text_rect is None:
+            return
+        start_iter = self._text_buffer.get_start_iter()
+        end_iter = self._text_buffer.get_end_iter()
+        text = self._text_buffer.get_text(start_iter, end_iter, True).strip()
+        if text:
+            self._annotations.append(
+                TextAnnotation(
+                    rect=self._pending_text_rect,
+                    text=text,
+                    color=self._selected_color(),
+                )
+            )
+            if self._drawing is not None:
+                self._drawing.queue_draw()
+        self._finish_text_entry()
+
+    def _on_text_entry_focus_out(self, widget, event):
+        return False
+
+    def _cancel_text_entry(self, widget=None) -> None:
+        self._finish_text_entry()
+
+    def _toggle_color_palette(self, button) -> None:
+        if self._color_palette is None or self._toolbar is None:
+            return
+        if self._color_palette.get_visible():
+            self._color_palette.hide()
+            return
+        _, natural = self._toolbar.get_preferred_size()
+        toolbar_x, toolbar_y = self._container.child_get_property(self._toolbar, "x"), self._container.child_get_property(self._toolbar, "y")
+        self._position_color_palette(toolbar_x, toolbar_y + natural.height + 4)
+        self._color_palette.show_all()
+
+    def _position_color_palette(self, x: int, y: int) -> None:
+        if self._color_palette is None or self._container is None:
+            return
+        self._container.move(self._color_palette, x, y)
+
+    def _refresh_color_button(self) -> None:
+        if self._color_button_label is None:
+            return
+        red, green, blue = self._selected_color_value
+        self._color_button_label.set_markup(
+            f'<span foreground="#{red:02x}{green:02x}{blue:02x}" size="x-large">■</span>'
+        )
+
+    def _refresh_box_button(self) -> None:
+        if self._box_button_label is None:
+            return
+        red, green, blue = self._selected_color_value
+        self._box_button_label.set_markup(
+            f'<span foreground="#{red:02x}{green:02x}{blue:02x}" size="x-large">□</span>'
+        )
+
+    def _finish_text_entry(self) -> None:
+        self._hide_text_editor()
+        if self._text_button is not None and self._text_button.get_active():
+            self._text_button.set_active(False)
+        else:
+            self._set_active_tool(None)
+
+    def _hide_text_editor(self) -> None:
+        if self._text_editor is not None:
+            self._text_editor.hide()
+        self._pending_text_rect = None
+        if self._drawing is not None:
+            self._drawing.grab_focus()
+
+    def _deactivate_box_tool(self) -> None:
+        if self._box_button is not None and self._box_button.get_active():
+            self._box_button.set_active(False)
+        else:
+            self._set_active_tool(None)

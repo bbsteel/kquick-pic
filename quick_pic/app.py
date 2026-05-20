@@ -54,6 +54,7 @@ class QuickPicApp:
                 self._config,
                 selection.screenshot_path,
                 selection.rect,
+                selection.annotations,
             )
             ClipboardManager.set_path_async(str(path))
         except Exception:
