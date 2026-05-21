@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "quick-pic" / "config.json"
 
 VALID_FORMATS = ["png", "jpg"]
-VALID_ICON_THEMES = ["v1", "v2", "v3"]
+VALID_ICON_THEMES = ["v1", "v2"]
 
 
 @dataclass
@@ -17,7 +17,7 @@ class AppConfig:
     save_path: str = "~/Pictures/quick-pic"
     format: str = "png"
     hotkey: str = "<ctrl>+<shift>+p"
-    icon_theme: str = "v2"
+    icon_theme: str = "v1"
 
     def resolved_save_path(self) -> Path:
         return Path(self.save_path).expanduser().resolve()
@@ -44,6 +44,10 @@ class ConfigManager:
             hotkey=data.get("hotkey", AppConfig.hotkey),
             icon_theme=data.get("icon_theme", AppConfig.icon_theme),
         )
+
+        if config.icon_theme not in VALID_ICON_THEMES:
+            logger.info(f"Unknown icon_theme '{config.icon_theme}', falling back to default")
+            config.icon_theme = AppConfig.icon_theme
 
         if not self._validate(config):
             logger.warning("Config validation failed, using defaults")

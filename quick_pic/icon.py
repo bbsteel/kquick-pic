@@ -5,11 +5,10 @@ from PIL import Image, ImageDraw
 ICON_NAME = "quick-pic-tray"
 ICON_DIR = Path(__file__).resolve().parent / "icons"
 
-THEMES = ["v1", "v2", "v3"]
+THEMES = ["v1", "v2"]
 ICON_THEME_LABELS = {
-    "v1": "Crop Corners",
-    "v2": "Shutter",
-    "v3": "Spark Snap",
+    "v1": "Camera Flat",
+    "v2": "Camera Realistic",
 }
 
 
@@ -23,98 +22,81 @@ def _icon_path(theme: str) -> Path:
 
 
 def _generate_v1(size: int = 64) -> Image.Image:
-    """Rounded tile with bold crop corners."""
+    """Flat camera icon."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    pad = size // 8
-    corner = size // 4
-    stroke = max(3, size // 10)
+    body = [size * 0.12, size * 0.24, size * 0.88, size * 0.76]
+    top = [size * 0.24, size * 0.16, size * 0.48, size * 0.28]
+    stroke = max(2, size // 24)
 
+    d.rounded_rectangle(body, radius=size * 0.12, fill=(55, 120, 210, 255))
+    d.rounded_rectangle(top, radius=size * 0.07, fill=(78, 150, 255, 255))
     d.rounded_rectangle(
-        [pad, pad, size - pad, size - pad],
-        radius=size // 5,
-        fill=(31, 39, 56, 255),
+        [body[0], body[1], body[2], body[1] + size * 0.12],
+        radius=size * 0.08,
+        fill=(96, 170, 255, 255),
     )
-    d.rounded_rectangle(
-        [pad + stroke, pad + stroke, size - pad - stroke, size - pad - stroke],
-        radius=size // 6,
-        fill=(18, 24, 38, 255),
-    )
-
-    accent = (78, 205, 255, 255)
-    highlight = (229, 247, 255, 255)
-    left = pad + stroke * 2
-    top = pad + stroke * 2
-    right = size - left
-    bottom = size - top
-
-    def _corner(x: int, y: int, x_dir: int, y_dir: int) -> None:
-        d.line([(x, y), (x + x_dir * corner, y)], fill=accent, width=stroke)
-        d.line([(x, y), (x, y + y_dir * corner)], fill=accent, width=stroke)
-
-    _corner(left, top, 1, 1)
-    _corner(right, top, -1, 1)
-    _corner(left, bottom, 1, -1)
-    _corner(right, bottom, -1, -1)
-    dot = size // 10
+    lens_outer = [size * 0.29, size * 0.31, size * 0.71, size * 0.73]
+    lens_mid = [size * 0.36, size * 0.38, size * 0.64, size * 0.66]
+    lens_inner = [size * 0.43, size * 0.45, size * 0.57, size * 0.59]
+    d.ellipse(lens_outer, fill=(233, 242, 255, 255), outline=(32, 74, 142, 255), width=stroke)
+    d.ellipse(lens_mid, fill=(40, 76, 138, 255))
+    d.ellipse(lens_inner, fill=(121, 213, 255, 255))
     d.ellipse(
-        [size // 2 - dot, size // 2 - dot, size // 2 + dot, size // 2 + dot],
-        fill=highlight,
+        [size * 0.53, size * 0.41, size * 0.61, size * 0.49],
+        fill=(255, 255, 255, 180),
+    )
+    d.rounded_rectangle(
+        [size * 0.64, size * 0.31, size * 0.77, size * 0.38],
+        radius=size * 0.03,
+        fill=(255, 208, 79, 255),
     )
     return img
 
 
 def _generate_v2(size: int = 64) -> Image.Image:
-    """Circular shutter icon with clean segmented blades."""
+    """Skeuomorphic camera icon."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    center = size / 2
-    outer_r = size * 0.39
-    inner_r = size * 0.15
     stroke = max(2, size // 24)
+    body = [size * 0.1, size * 0.24, size * 0.9, size * 0.8]
+    top = [size * 0.22, size * 0.15, size * 0.48, size * 0.3]
 
+    d.rounded_rectangle(body, radius=size * 0.12, fill=(36, 38, 44, 255))
+    d.rounded_rectangle(top, radius=size * 0.05, fill=(74, 76, 84, 255))
+    d.rounded_rectangle(
+        [body[0], body[1], body[2], body[1] + size * 0.1],
+        radius=size * 0.08,
+        fill=(172, 176, 186, 255),
+    )
+    d.rounded_rectangle(
+        [body[0] + stroke, body[3] - size * 0.08, body[2] - stroke, body[3]],
+        radius=size * 0.08,
+        fill=(20, 20, 24, 255),
+    )
+
+    rings = [
+        ((size * 0.25, size * 0.31, size * 0.75, size * 0.81), (198, 204, 214, 255)),
+        ((size * 0.3, size * 0.36, size * 0.7, size * 0.76), (58, 62, 71, 255)),
+        ((size * 0.36, size * 0.42, size * 0.64, size * 0.7), (150, 190, 220, 255)),
+        ((size * 0.42, size * 0.48, size * 0.58, size * 0.64), (36, 56, 86, 255)),
+    ]
+    for bounds, fill in rings:
+        d.ellipse(bounds, fill=fill)
     d.ellipse(
-        [
-            center - outer_r,
-            center - outer_r,
-            center + outer_r,
-            center + outer_r,
-        ],
-        fill=(24, 32, 48, 255),
-        outline=(91, 214, 255, 255),
+        [size * 0.5, size * 0.43, size * 0.6, size * 0.53],
+        fill=(255, 255, 255, 170),
+    )
+    d.rounded_rectangle(
+        [size * 0.66, size * 0.18, size * 0.81, size * 0.28],
+        radius=size * 0.03,
+        fill=(210, 214, 221, 255),
+    )
+    d.ellipse(
+        [size * 0.16, size * 0.37, size * 0.25, size * 0.46],
+        fill=(208, 64, 64, 255),
+        outline=(120, 24, 24, 255),
         width=stroke,
-    )
-    blade_outer = outer_r - size * 0.05
-    blade_inner = inner_r + size * 0.05
-    for i in range(6):
-        start = math.radians(i * 60 - 12)
-        end = math.radians(i * 60 + 42)
-        mid = math.radians(i * 60 + 18)
-        points = [
-            _polar(center, center, blade_outer, start),
-            _polar(center, center, blade_outer, end),
-            _polar(center, center, blade_inner, mid),
-        ]
-        shade = 176 - i * 10
-        d.polygon(points, fill=(shade, shade + 18, shade + 28, 255))
-    d.ellipse(
-        [
-            center - inner_r,
-            center - inner_r,
-            center + inner_r,
-            center + inner_r,
-        ],
-        fill=(12, 18, 30, 255),
-    )
-    gleam_r = size * 0.055
-    d.ellipse(
-        [
-            center - inner_r * 0.5,
-            center - inner_r * 0.95,
-            center - inner_r * 0.5 + gleam_r * 2,
-            center - inner_r * 0.95 + gleam_r * 2,
-        ],
-        fill=(255, 255, 255, 180),
     )
     return img
 
@@ -167,7 +149,7 @@ def _generate_v3(size: int = 64) -> Image.Image:
     return img
 
 
-_GENERATORS = {"v1": _generate_v1, "v2": _generate_v2, "v3": _generate_v3}
+_GENERATORS = {"v1": _generate_v1, "v2": _generate_v2}
 
 
 # ---------------------------------------------------------------------------

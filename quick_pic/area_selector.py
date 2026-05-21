@@ -34,6 +34,9 @@ class AreaSelector:
     _TEXT_FONT = "Sans 20"
     _TEXT_PADDING_X = 8
     _TEXT_PADDING_Y = 6
+    _SELECTION_HANDLE_MARGIN = 10
+    _SELECTION_HANDLE_SIZE = 8
+    _MIN_SELECTION_SIZE = 24
 
     def __init__(self):
         import gi
@@ -77,6 +80,7 @@ class AreaSelector:
         self._color_palette = None
         self._pending_text_rect: tuple[int, int, int, int] | None = None
         self._selected_color_value = (255, 0, 0)
+        self._selection_drag_origin: tuple[int, int, int, int] | None = None
 
     def run(self) -> SelectionResult | None:
         import tempfile
@@ -281,6 +285,7 @@ class AreaSelector:
         cr.set_line_width(2)
         cr.rectangle(x + 1, y + 1, rw - 2, rh - 2)
         cr.stroke()
+        self._draw_selection_handles(cr, active_rect)
 
         self._draw_annotations(cr)
 
@@ -333,6 +338,17 @@ class AreaSelector:
             self._end_x = event.x
             self._end_y = event.y
             widget.queue_draw()
+        elif event.button == 1 and self._selection_rect is not None and self._can_edit_selection():
+            selection_handle = self._selection_hit_test(event.x, event.y)
+            if selection_handle is not None:
+                self._dragging = True
+                self._gesture_kind = f"selection-{selection_handle}"
+                self._selection_drag_origin = self._selection_rect
+                self._start_x = event.x
+                self._start_y = event.y
+                self._end_x = event.x
+                self._end_y = event.y
+                self._apply_selection_cursor(selection_handle)
         elif event.button == 3:
             self._Gtk.main_quit()
 
@@ -347,9 +363,11 @@ class AreaSelector:
             w = int(abs(self._end_x - self._start_x))
             h = int(abs(self._end_y - self._start_y))
 
-            if w < 4 or h < 4:
+            if self._gesture_kind in {"select", "box", "text"} and (w < 4 or h < 4):
                 self._dragging = False
                 self._gesture_kind = None
+                self._selection_drag_origin = None
+                self._update_idle_cursor(event.x, event.y)
                 widget.queue_draw()
                 return
 
@@ -375,23 +393,27 @@ class AreaSelector:
                 text_rect = self._normalized_text_rect_within_selection((x, y, w, h))
                 if text_rect is not None:
                     self._show_text_entry(text_rect)
+            elif self._gesture_kind and self._gesture_kind.startswith("selection-"):
+                self._selection_drag_origin = None
 
             self._dragging = False
             self._gesture_kind = None
+            self._update_idle_cursor(event.x, event.y)
             widget.queue_draw()
 
     def _on_motion(self, widget, event):
         if self._dragging:
-            previous_rect = self._drag_preview_screen_rect(
-                self._current_drag_rect(),
-                self._gesture_kind,
-            )
+            previous_rect = self._drag_redraw_rect()
             old_x, old_y = self._end_x, self._end_y
             self._end_x = event.x
             self._end_y = event.y
             # Only redraw if position changed enough to avoid jitter
             if abs(old_x - self._end_x) > 0.5 or abs(old_y - self._end_y) > 0.5:
+                if self._gesture_kind and self._gesture_kind.startswith("selection-"):
+                    self._update_selection_drag()
                 self._queue_drag_redraw(previous_rect)
+        else:
+            self._update_idle_cursor(event.x, event.y)
 
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
@@ -441,6 +463,46 @@ class AreaSelector:
             return False
         sx, sy, sw, sh = self._selection_rect
         return sx <= x <= sx + sw and sy <= y <= sy + sh
+
+    def _can_edit_selection(self) -> bool:
+        return self._active_tool is None and self._pending_text_rect is None
+
+    def _selection_hit_test(self, x: float, y: float) -> str | None:
+        if self._selection_rect is None:
+            return None
+        sx, sy, sw, sh = self._selection_rect
+        right = sx + sw
+        bottom = sy + sh
+        margin = self._SELECTION_HANDLE_MARGIN
+
+        if x < sx - margin or x > right + margin or y < sy - margin or y > bottom + margin:
+            return None
+
+        near_left = abs(x - sx) <= margin
+        near_right = abs(x - right) <= margin
+        near_top = abs(y - sy) <= margin
+        near_bottom = abs(y - bottom) <= margin
+        inside = sx <= x <= right and sy <= y <= bottom
+
+        if near_left and near_top:
+            return "nw"
+        if near_right and near_top:
+            return "ne"
+        if near_left and near_bottom:
+            return "sw"
+        if near_right and near_bottom:
+            return "se"
+        if near_left and sy <= y <= bottom:
+            return "w"
+        if near_right and sy <= y <= bottom:
+            return "e"
+        if near_top and sx <= x <= right:
+            return "n"
+        if near_bottom and sx <= x <= right:
+            return "s"
+        if inside:
+            return "move"
+        return None
 
     def _relative_rect_within_selection(
         self,
@@ -501,7 +563,12 @@ class AreaSelector:
             return self._screen_rect_from_selection_relative(
                 self._normalized_text_rect_within_selection(drag_rect)
             )
+        if gesture_kind and gesture_kind.startswith("selection-"):
+            return self._selection_rect
         return None
+
+    def _drag_redraw_rect(self) -> tuple[int, int, int, int] | None:
+        return self._drag_preview_screen_rect(self._current_drag_rect(), self._gesture_kind)
 
     def _screen_rect_from_selection_relative(
         self,
@@ -530,6 +597,83 @@ class AreaSelector:
                 w + padding * 2,
                 h + padding * 2,
             )
+
+    def _update_selection_drag(self) -> None:
+        if self._selection_drag_origin is None or self._background_pixbuf is None or self._gesture_kind is None:
+            return
+
+        sx, sy, sw, sh = self._selection_drag_origin
+        dx = int(self._end_x - self._start_x)
+        dy = int(self._end_y - self._start_y)
+        screen_width = self._background_pixbuf.get_width()
+        screen_height = self._background_pixbuf.get_height()
+
+        handle = self._gesture_kind.removeprefix("selection-")
+        if handle == "move":
+            new_x = max(0, min(sx + dx, screen_width - sw))
+            new_y = max(0, min(sy + dy, screen_height - sh))
+            self._selection_rect = (new_x, new_y, sw, sh)
+        else:
+            left = sx
+            top = sy
+            right = sx + sw
+            bottom = sy + sh
+            min_size = self._MIN_SELECTION_SIZE
+
+            if "w" in handle:
+                left = max(0, min(sx + dx, right - min_size))
+            if "e" in handle:
+                right = min(screen_width, max(sx + sw + dx, left + min_size))
+            if "n" in handle:
+                top = max(0, min(sy + dy, bottom - min_size))
+            if "s" in handle:
+                bottom = min(screen_height, max(sy + sh + dy, top + min_size))
+
+            self._selection_rect = (left, top, right - left, bottom - top)
+
+        self._result = self._selection_rect
+        self._position_toolbar()
+
+    def _apply_selection_cursor(self, handle: str | None) -> None:
+        cursor_name = {
+            "move": "move",
+            "n": "ns-resize",
+            "s": "ns-resize",
+            "e": "ew-resize",
+            "w": "ew-resize",
+            "nw": "nwse-resize",
+            "se": "nwse-resize",
+            "ne": "nesw-resize",
+            "sw": "nesw-resize",
+        }.get(handle)
+        self._set_window_cursor(cursor_name)
+
+    def _update_idle_cursor(self, x: float, y: float) -> None:
+        if self._active_tool == "box":
+            self._set_window_cursor("crosshair")
+            return
+        if self._active_tool is not None or self._pending_text_rect is not None:
+            self._set_window_cursor(None)
+            return
+        self._apply_selection_cursor(self._selection_hit_test(x, y))
+
+    def _draw_selection_handles(self, cr, rect: tuple[int, int, int, int]) -> None:
+        x, y, w, h = rect
+        half = self._SELECTION_HANDLE_SIZE / 2
+        handles = [
+            (x, y),
+            (x + w / 2, y),
+            (x + w, y),
+            (x, y + h / 2),
+            (x + w, y + h / 2),
+            (x, y + h),
+            (x + w / 2, y + h),
+            (x + w, y + h),
+        ]
+        cr.set_source_rgba(1, 1, 1, 0.95)
+        for hx, hy in handles:
+            cr.rectangle(hx - half, hy - half, self._SELECTION_HANDLE_SIZE, self._SELECTION_HANDLE_SIZE)
+            cr.fill()
 
     def _draw_rectangle_annotation(self, cr, annotation: RectangleAnnotation, dashed: bool = False) -> None:
         if self._selection_rect is None:
@@ -589,9 +733,12 @@ class AreaSelector:
 
     def _set_active_tool(self, tool_name: str | None) -> None:
         self._active_tool = tool_name
+        cursor_name = "crosshair" if tool_name == "box" else None
+        self._set_window_cursor(cursor_name)
+
+    def _set_window_cursor(self, cursor_name: str | None) -> None:
         if self._window is None or self._window.get_window() is None:
             return
-        cursor_name = "crosshair" if tool_name == "box" else None
         cursor = None if cursor_name is None else self._Gdk.Cursor.new_from_name(
             self._window.get_display(),
             cursor_name,
