@@ -101,6 +101,7 @@ class AreaSelector:
         win.set_keep_above(True)
         win.set_accept_focus(True)
         win.set_default_size(pixbuf.get_width(), pixbuf.get_height())
+        win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
         self._window = win
 
         drawing = self._Gtk.DrawingArea()
@@ -176,6 +177,7 @@ class AreaSelector:
         text_view.set_bottom_margin(self._TEXT_PADDING_Y)
         text_view.modify_font(self._Pango.FontDescription(self._TEXT_FONT))
         text_view.connect("focus-out-event", self._on_text_entry_focus_out)
+        text_view.connect("key-press-event", self._on_key_press)
         text_buffer = text_view.get_buffer()
         text_confirm_button = self._Gtk.Button(label="✓")
         text_confirm_button.set_tooltip_text("Accept text")
@@ -214,6 +216,7 @@ class AreaSelector:
         drawing.connect("motion-notify-event", self._on_motion)
         drawing.connect("key-press-event", self._on_key_press)
         win.connect("key-press-event", self._on_key_press)
+        win.connect_after("button-press-event", self._on_window_button_press)
 
         win.fullscreen()
         win.show_all()
@@ -314,6 +317,15 @@ class AreaSelector:
             )
 
     def _on_button_press(self, widget, event):
+        if (
+            event.button == 1
+            and event.type == self._Gdk.EventType._2BUTTON_PRESS
+            and self._selection_rect is not None
+            and self._can_edit_selection()
+            and self._point_in_selection(event.x, event.y)
+        ):
+            self._on_confirm(None)
+            return True
         if event.button == 1 and self._selection_rect is None:
             self._dragging = True
             self._gesture_kind = "select"
@@ -349,8 +361,12 @@ class AreaSelector:
                 self._end_x = event.x
                 self._end_y = event.y
                 self._apply_selection_cursor(selection_handle)
+                return True
         elif event.button == 3:
+            self._result = None
             self._Gtk.main_quit()
+            return True
+        return False
 
     def _on_button_release(self, widget, event):
         if event.button == 1 and self._dragging:
@@ -418,7 +434,17 @@ class AreaSelector:
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
         if event.keyval == Gdk.KEY_Escape:
+            self._result = None
             self._Gtk.main_quit()
+            return True
+        return False
+
+    def _on_window_button_press(self, widget, event):
+        if event.button == 3:
+            self._result = None
+            self._Gtk.main_quit()
+            return True
+        return False
 
     def _on_tool_toggled(self, button, tool_name: str) -> None:
         if button.get_active():
