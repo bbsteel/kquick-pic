@@ -117,9 +117,12 @@ class AreaSelector:
             | self._Gdk.EventMask.POINTER_MOTION_MASK
             | self._Gdk.EventMask.KEY_PRESS_MASK
         )
+        background_image = self._Gtk.Image.new_from_pixbuf(pixbuf)
         container = self._Gtk.Fixed()
         self._container = container
+        container.put(background_image, 0, 0)
         container.put(drawing, 0, 0)
+        drawing.set_app_paintable(True)
         win.add(container)
 
         toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -253,10 +256,6 @@ class AreaSelector:
         pass
 
     def _on_draw_overlay(self, widget, cr):
-        if self._background_pixbuf is not None:
-            self._Gdk.cairo_set_source_pixbuf(cr, self._background_pixbuf, 0, 0)
-            cr.paint()
-
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
 
