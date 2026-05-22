@@ -15,6 +15,51 @@ uv venv --system-site-packages --python python3.13
 uv sync
 ```
 
+## 安装 / 分发
+
+### 本地安装桌面启动器
+
+```bash
+./scripts/install.sh
+```
+
+安装脚本会：
+
+1. 用系统 Python 3.13 创建 `.venv`
+2. 执行 `uv sync --frozen`
+3. 安装 `~/.local/share/applications/quick-pic.desktop`
+4. 安装桌面图标 `~/.local/share/icons/hicolor/256x256/apps/quick-pic.png`
+
+卸载桌面集成：
+
+```bash
+./scripts/uninstall.sh
+```
+
+### 打源码分发包
+
+```bash
+./scripts/package-release.sh
+```
+
+输出：
+
+```bash
+dist/quick-pic-0.1.0.tar.gz
+```
+
+把这个 tar.gz 发给另一个 Linux 用户后，对方解压并执行：
+
+```bash
+./scripts/install.sh
+```
+
+### 额外说明
+
+- 分发目标仍然需要系统层依赖：`python3.13`、GTK3 / PyGObject、`dbus-python`
+- 自启动由应用内设置控制，写入 `~/.config/autostart/quick-pic.desktop`
+- 多语言插件可放在 `quick_pic/locales/*.json` 或 `~/.config/quick-pic/locales/*.json`
+
 ## 技术栈
 
 | 层 | 选型 |
@@ -105,7 +150,10 @@ pystray 默认用 `Gtk.StatusIcon` (XEmbed 协议)，KDE Plasma 5+ 已弃用。�
 {
   "save_path": "~/Pictures/quick-pic",
   "format": "png",
-  "hotkey": "<ctrl>+<shift>+p"
+  "hotkey": "<ctrl>+<shift>+p",
+  "icon_theme": "v1",
+  "autostart": false,
+  "language": "zh-CN"
 }
 ```
 
