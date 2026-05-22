@@ -183,6 +183,8 @@ class TrayManager:
         if self._Gtk is None:
             return
         self._rebuild_menu()
+        if self._sni is not None:
+            self._sni._refresh_menu()
         logger.info("Tray language refreshed")
 
     def notify(self, title: str, message: str) -> None:
@@ -488,15 +490,21 @@ def _create_sni(
                     ),
                     dbus.Array(
                         [
-                            _item(1, {"label": dbus.String("Take Screenshot")}),
-                            _item(2, {"label": dbus.String("Settings")}),
+                            _item(1, {"label": dbus.String(t("tray.take_screenshot"))}),
+                            _item(2, {"label": dbus.String(t("tray.settings"))}),
                             _item(3, {"type": dbus.String("separator")}),
-                            _item(4, {"label": dbus.String("Quit")}),
+                            _item(4, {"label": dbus.String(t("tray.quit"))}),
                         ],
                         signature="v",
                     ),
                 ),
                 signature=None,
             )
+
+        def _refresh_menu(self):
+            import dbus
+
+            self._menu_revision = dbus.UInt32(int(self._menu_revision) + 1)
+            self.LayoutUpdated(self._menu_revision, dbus.Int32(0))
 
     return _SNI()

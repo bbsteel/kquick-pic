@@ -1,6 +1,6 @@
 import logging
 from quick_pic.config import AppConfig, VALID_FORMATS, VALID_ICON_THEMES
-from quick_pic.i18n import available_languages, t
+from quick_pic.i18n import available_languages, current_language, set_language, t
 from quick_pic.icon import get_icon_path, get_icon_theme_label
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ class SettingsDialog:
         self._Gdk = Gdk
         self._config = config
         self._result: AppConfig | None = None
+        self._initial_language = current_language()
 
         self._dialog = Gtk.Dialog(
             title=t("settings.title"),
@@ -38,23 +39,23 @@ class SettingsDialog:
 
         # -- Save Path row --
         path_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        path_label = Gtk.Label(label=t("settings.save_path"))
-        path_label.set_xalign(0)
-        path_label.set_width_chars(10)
+        self._path_label = Gtk.Label(label=t("settings.save_path"))
+        self._path_label.set_xalign(0)
+        self._path_label.set_width_chars(10)
         self._path_entry = Gtk.Entry()
         self._path_entry.set_text(str(config.resolved_save_path()))
-        browse_btn = Gtk.Button(label=t("settings.browse"))
-        browse_btn.connect("clicked", self._on_browse)
-        path_box.pack_start(path_label, False, False, 0)
+        self._browse_btn = Gtk.Button(label=t("settings.browse"))
+        self._browse_btn.connect("clicked", self._on_browse)
+        path_box.pack_start(self._path_label, False, False, 0)
         path_box.pack_start(self._path_entry, True, True, 0)
-        path_box.pack_start(browse_btn, False, False, 0)
+        path_box.pack_start(self._browse_btn, False, False, 0)
         content.add(path_box)
 
         # -- Format row --
         fmt_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        fmt_label = Gtk.Label(label=t("settings.format"))
-        fmt_label.set_xalign(0)
-        fmt_label.set_width_chars(10)
+        self._fmt_label = Gtk.Label(label=t("settings.format"))
+        self._fmt_label.set_xalign(0)
+        self._fmt_label.set_width_chars(10)
         self._fmt_combo = Gtk.ComboBoxText()
         for f in VALID_FORMATS:
             self._fmt_combo.append_text(f.upper())
@@ -63,15 +64,15 @@ class SettingsDialog:
             if config.format in VALID_FORMATS
             else 0
         )
-        fmt_box.pack_start(fmt_label, False, False, 0)
+        fmt_box.pack_start(self._fmt_label, False, False, 0)
         fmt_box.pack_start(self._fmt_combo, True, True, 0)
         content.add(fmt_box)
 
         # -- Icon theme row (with visual preview) --
         icon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        icon_label = Gtk.Label(label=t("settings.icon"))
-        icon_label.set_xalign(0)
-        icon_label.set_width_chars(10)
+        self._icon_label = Gtk.Label(label=t("settings.icon"))
+        self._icon_label.set_xalign(0)
+        self._icon_label.set_width_chars(10)
 
         # Build ListStore: [pixbuf, label, theme_key]
         self._icon_store = Gtk.ListStore(GdkPixbuf.Pixbuf, str, str)
@@ -96,15 +97,15 @@ class SettingsDialog:
         self._icon_combo.add_attribute(renderer_text, "text", 1)
         self._icon_combo.set_active(active_idx)
 
-        icon_box.pack_start(icon_label, False, False, 0)
+        icon_box.pack_start(self._icon_label, False, False, 0)
         icon_box.pack_start(self._icon_combo, True, True, 0)
         content.add(icon_box)
 
         # -- Language row --
         language_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        language_label = Gtk.Label(label=t("settings.language"))
-        language_label.set_xalign(0)
-        language_label.set_width_chars(10)
+        self._language_label = Gtk.Label(label=t("settings.language"))
+        self._language_label.set_xalign(0)
+        self._language_label.set_width_chars(10)
         self._language_store = Gtk.ListStore(str, str)
         active_language_idx = 0
         for index, (code, name) in enumerate(available_languages()):
@@ -116,15 +117,16 @@ class SettingsDialog:
         self._language_combo.pack_start(renderer_language, True)
         self._language_combo.add_attribute(renderer_language, "text", 0)
         self._language_combo.set_active(active_language_idx)
-        language_box.pack_start(language_label, False, False, 0)
+        self._language_combo.connect("changed", self._on_language_changed)
+        language_box.pack_start(self._language_label, False, False, 0)
         language_box.pack_start(self._language_combo, True, True, 0)
         content.add(language_box)
 
         # -- Hotkey row --
         hk_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        hk_label = Gtk.Label(label=t("settings.hotkey"))
-        hk_label.set_xalign(0)
-        hk_label.set_width_chars(10)
+        self._hk_label = Gtk.Label(label=t("settings.hotkey"))
+        self._hk_label.set_xalign(0)
+        self._hk_label.set_width_chars(10)
         self._hk_entry = Gtk.Entry()
         self._hk_entry.set_text(self._format_hotkey_display(config.hotkey))
         self._hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
@@ -135,24 +137,24 @@ class SettingsDialog:
         self._recording = False
         self._pressed_keys: set[str] = set()
         self._hk_raw = config.hotkey
-        hk_box.pack_start(hk_label, False, False, 0)
+        hk_box.pack_start(self._hk_label, False, False, 0)
         hk_box.pack_start(self._hk_entry, True, True, 0)
         content.add(hk_box)
 
         # -- Autostart row --
         autostart_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        autostart_label = Gtk.Label(label=t("settings.autostart"))
-        autostart_label.set_xalign(0)
-        autostart_label.set_width_chars(10)
+        self._autostart_label = Gtk.Label(label=t("settings.autostart"))
+        self._autostart_label.set_xalign(0)
+        self._autostart_label.set_width_chars(10)
         self._autostart_check = Gtk.CheckButton(label=t("settings.autostart_label"))
         self._autostart_check.set_active(config.autostart)
-        autostart_box.pack_start(autostart_label, False, False, 0)
+        autostart_box.pack_start(self._autostart_label, False, False, 0)
         autostart_box.pack_start(self._autostart_check, True, True, 0)
         content.add(autostart_box)
 
         # -- Buttons --
-        self._dialog.add_button(t("settings.cancel"), Gtk.ResponseType.CANCEL)
-        self._dialog.add_button(t("settings.save"), Gtk.ResponseType.OK)
+        self._cancel_button = self._dialog.add_button(t("settings.cancel"), Gtk.ResponseType.CANCEL)
+        self._save_button = self._dialog.add_button(t("settings.save"), Gtk.ResponseType.OK)
         self._dialog.connect("response", self._on_response)
 
         content.show_all()
@@ -239,13 +241,37 @@ class SettingsDialog:
                 language=self._language_store[self._language_combo.get_active_iter()][1],
             )
         else:
+            set_language(self._initial_language)
             self._result = None
         self._dialog.hide()
+
+    def _on_language_changed(self, widget) -> None:
+        active_iter = self._language_combo.get_active_iter()
+        if active_iter is None:
+            return
+        set_language(self._language_store[active_iter][1])
+        self._refresh_translations()
 
     @staticmethod
     def _format_hotkey_display(raw: str) -> str:
         """'<ctrl>+<shift>+p' → 'Ctrl+Shift+P'"""
         return raw.replace("<", "").replace(">", "").title()
+
+    def _refresh_translations(self) -> None:
+        self._dialog.set_title(t("settings.title"))
+        self._path_label.set_text(t("settings.save_path"))
+        self._browse_btn.set_label(t("settings.browse"))
+        self._fmt_label.set_text(t("settings.format"))
+        self._icon_label.set_text(t("settings.icon"))
+        self._language_label.set_text(t("settings.language"))
+        self._hk_label.set_text(t("settings.hotkey"))
+        self._hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
+        self._autostart_label.set_text(t("settings.autostart"))
+        self._autostart_check.set_label(t("settings.autostart_label"))
+        self._cancel_button.set_label(t("settings.cancel"))
+        self._save_button.set_label(t("settings.save"))
+        for row in self._icon_store:
+            row[1] = get_icon_theme_label(row[2])
 
     @staticmethod
     def _gtk_key_to_name(event) -> str | None:
