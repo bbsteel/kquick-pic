@@ -1,7 +1,9 @@
 import threading
 import logging
 
+from quick_pic.autostart import AutoStartManager
 from quick_pic.config import ConfigManager, AppConfig
+from quick_pic.i18n import set_language, t
 from quick_pic.screenshot import ScreenshotCapture
 from quick_pic.clipboard import ClipboardManager
 from quick_pic.hotkey import HotkeyManager
@@ -14,12 +16,15 @@ class QuickPicApp:
 
     def __init__(self):
         self._config_manager = ConfigManager()
+        self._autostart_manager = AutoStartManager()
         self._config: AppConfig | None = None
         self._hotkey_manager: HotkeyManager | None = None
         self._tray_manager: TrayManager | None = None
 
     def run(self) -> None:
         self._config = self._config_manager.load()
+        set_language(self._config.language)
+        self._autostart_manager.apply(self._config)
 
         self._tray_manager = TrayManager(
             on_screenshot=self._on_tray_screenshot,
@@ -60,7 +65,7 @@ class QuickPicApp:
         except Exception:
             logger.exception("Screenshot capture failed")
             if self._tray_manager:
-                self._tray_manager.notify("Quick Pic", "Screenshot failed")
+                self._tray_manager.notify(t("notify.app_name"), t("notify.screenshot_failed"))
 
     def _on_tray_screenshot(self, widget) -> None:
         """GTK menu callback — spawn worker thread."""
@@ -100,11 +105,17 @@ class QuickPicApp:
 
         old_hotkey = self._config.hotkey
         old_icon_theme = self._config.icon_theme
+        old_language = self._config.language
         self._config = result
+        set_language(result.language)
         self._config_manager.save(self._config)
+        self._autostart_manager.apply(self._config)
 
         if result.icon_theme != old_icon_theme:
             self._tray_manager.update_icon_theme(result.icon_theme)
+
+        if result.language != old_language:
+            self._tray_manager.update_language()
 
         if result.hotkey != old_hotkey:
             logger.info(f"Hotkey changed, restarting listener with: {result.hotkey}")

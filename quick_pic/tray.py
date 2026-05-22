@@ -1,6 +1,8 @@
 import os
 import logging
 
+from quick_pic.i18n import t
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,6 +109,7 @@ class TrayManager:
         self._on_settings = on_settings
         self._on_quit = on_quit
         self._config = config
+        self._Gtk = None
         self._bus = None
         self._bus_name = None
         self._sni = None
@@ -122,25 +125,8 @@ class TrayManager:
 
         theme = self._config.icon_theme
 
-        # Build GTK popup menu
-        self._menu = Gtk.Menu()
-
-        item_screenshot = Gtk.MenuItem(label="Take Screenshot")
-        item_screenshot.connect("activate", self._on_screenshot)
-        self._menu.append(item_screenshot)
-
-        item_settings = Gtk.MenuItem(label="Settings")
-        item_settings.connect("activate", self._on_settings)
-        self._menu.append(item_settings)
-
-        sep = Gtk.SeparatorMenuItem()
-        self._menu.append(sep)
-
-        item_quit = Gtk.MenuItem(label="Quit")
-        item_quit.connect("activate", self._on_quit_wrapper)
-        self._menu.append(item_quit)
-
-        self._menu.show_all()
+        self._Gtk = Gtk
+        self._rebuild_menu()
 
         # Create StatusNotifierItem via D-Bus
         import dbus
@@ -193,6 +179,12 @@ class TrayManager:
         self._register_with_watcher()
         logger.info(f"Icon theme switched to {theme}")
 
+    def update_language(self) -> None:
+        if self._Gtk is None:
+            return
+        self._rebuild_menu()
+        logger.info("Tray language refreshed")
+
     def notify(self, title: str, message: str) -> None:
         try:
             import gi
@@ -213,6 +205,30 @@ class TrayManager:
 
     def _on_quit_wrapper(self, widget) -> None:
         self._on_quit(widget)
+
+    def _rebuild_menu(self) -> None:
+        if self._Gtk is None:
+            return
+        if self._menu is not None:
+            self._menu.destroy()
+
+        self._menu = self._Gtk.Menu()
+
+        item_screenshot = self._Gtk.MenuItem(label=t("tray.take_screenshot"))
+        item_screenshot.connect("activate", self._on_screenshot)
+        self._menu.append(item_screenshot)
+
+        item_settings = self._Gtk.MenuItem(label=t("tray.settings"))
+        item_settings.connect("activate", self._on_settings)
+        self._menu.append(item_settings)
+
+        sep = self._Gtk.SeparatorMenuItem()
+        self._menu.append(sep)
+
+        item_quit = self._Gtk.MenuItem(label=t("tray.quit"))
+        item_quit.connect("activate", self._on_quit_wrapper)
+        self._menu.append(item_quit)
+        self._menu.show_all()
 
     def _on_settings_dbus(self):
         self._on_settings(None)

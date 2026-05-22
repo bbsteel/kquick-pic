@@ -4,6 +4,8 @@ import json
 import logging
 import os
 
+from quick_pic.i18n import available_languages, current_language
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "quick-pic" / "config.json"
@@ -18,6 +20,8 @@ class AppConfig:
     format: str = "png"
     hotkey: str = "<ctrl>+<shift>+p"
     icon_theme: str = "v1"
+    autostart: bool = False
+    language: str = field(default_factory=current_language)
 
     def resolved_save_path(self) -> Path:
         return Path(self.save_path).expanduser().resolve()
@@ -43,11 +47,17 @@ class ConfigManager:
             format=data.get("format", AppConfig.format),
             hotkey=data.get("hotkey", AppConfig.hotkey),
             icon_theme=data.get("icon_theme", AppConfig.icon_theme),
+            autostart=data.get("autostart", AppConfig.autostart),
+            language=data.get("language", current_language()),
         )
 
         if config.icon_theme not in VALID_ICON_THEMES:
             logger.info(f"Unknown icon_theme '{config.icon_theme}', falling back to default")
             config.icon_theme = AppConfig.icon_theme
+        valid_languages = {code for code, _ in available_languages()}
+        if config.language not in valid_languages:
+            logger.info(f"Unknown language '{config.language}', falling back to current language")
+            config.language = current_language()
 
         if not self._validate(config):
             logger.warning("Config validation failed, using defaults")
@@ -79,3 +89,4 @@ class ConfigManager:
             logger.warning(f"Invalid hotkey string '{config.hotkey}'")
             return False
         return True
+from quick_pic.i18n import available_languages, current_language

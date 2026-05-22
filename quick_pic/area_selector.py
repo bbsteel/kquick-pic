@@ -2,6 +2,8 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 
+from quick_pic.i18n import t
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,17 +127,17 @@ class AreaSelector:
         box_button = self._Gtk.ToggleButton()
         box_button_label = self._Gtk.Label()
         box_button.add(box_button_label)
-        box_button.set_tooltip_text("Draw box")
+        box_button.set_tooltip_text(t("selector.draw_box"))
         text_button = self._Gtk.ToggleButton(label="T")
-        text_button.set_tooltip_text("Add text")
+        text_button.set_tooltip_text(t("selector.add_text"))
         color_picker_button = self._Gtk.Button()
-        color_picker_button.set_tooltip_text("Choose color")
+        color_picker_button.set_tooltip_text(t("selector.choose_color"))
         color_button_label = self._Gtk.Label()
         color_picker_button.add(color_button_label)
         confirm_button = self._Gtk.Button(label="✓")
-        confirm_button.set_tooltip_text("Confirm")
+        confirm_button.set_tooltip_text(t("selector.confirm"))
         cancel_button = self._Gtk.Button(label="✕")
-        cancel_button.set_tooltip_text("Cancel")
+        cancel_button.set_tooltip_text(t("selector.cancel"))
         box_button.connect("toggled", self._on_tool_toggled, "box")
         text_button.connect("toggled", self._on_tool_toggled, "text")
         color_picker_button.connect("clicked", self._toggle_color_palette)
@@ -180,10 +182,10 @@ class AreaSelector:
         text_view.connect("key-press-event", self._on_key_press)
         text_buffer = text_view.get_buffer()
         text_confirm_button = self._Gtk.Button(label="✓")
-        text_confirm_button.set_tooltip_text("Accept text")
+        text_confirm_button.set_tooltip_text(t("selector.accept_text"))
         text_confirm_button.connect("clicked", self._commit_text_entry)
         text_cancel_button = self._Gtk.Button(label="✕")
-        text_cancel_button.set_tooltip_text("Cancel text")
+        text_cancel_button.set_tooltip_text(t("selector.cancel_text"))
         text_cancel_button.connect("clicked", self._cancel_text_entry)
         text_editor_frame = self._Gtk.Frame()
         text_editor_frame.set_shadow_type(self._Gtk.ShadowType.IN)

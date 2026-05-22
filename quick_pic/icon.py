@@ -2,18 +2,18 @@ import math
 from pathlib import Path
 from PIL import Image, ImageDraw
 
+from quick_pic.i18n import t
+
 ICON_NAME = "quick-pic-tray"
 ICON_DIR = Path(__file__).resolve().parent / "icons"
 
 THEMES = ["v1", "v2"]
-ICON_THEME_LABELS = {
-    "v1": "Camera Flat",
-    "v2": "Camera Realistic",
-}
-
-
 def _icon_path(theme: str) -> Path:
     return ICON_DIR / f"{ICON_NAME}-{theme}.png"
+
+
+def get_icon_theme_label(theme: str) -> str:
+    return t(f"icon.theme.{theme}")
 
 
 # ---------------------------------------------------------------------------
