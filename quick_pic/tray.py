@@ -185,6 +185,7 @@ class TrayManager:
         self._rebuild_menu()
         if self._sni is not None:
             self._sni._refresh_menu()
+            self._sni._refresh_tooltip()
         logger.info("Tray language refreshed")
 
     def notify(self, title: str, message: str) -> None:
@@ -309,12 +310,16 @@ def _create_sni(
                 ],
                 signature="(iiay)",
             )
-            self._tooltip = dbus.Struct(
+            self._tooltip = self._build_tooltip()
+
+        def _build_tooltip(self):
+            import dbus
+            return dbus.Struct(
                 (
                     self._icon_name,
                     self._icon_pixmaps,
                     dbus.String("Quick Pic"),
-                    dbus.String("Click: screenshot  |  Right: menu"),
+                    dbus.String(t("tray.tooltip")),
                 ),
                 signature=None,
             )
@@ -447,15 +452,7 @@ def _create_sni(
                 ],
                 signature="(iiay)",
             )
-            self._tooltip = dbus.Struct(
-                (
-                    self._icon_name,
-                    self._icon_pixmaps,
-                    dbus.String("Quick Pic"),
-                    dbus.String("Click: screenshot  |  Right: menu"),
-                ),
-                signature=None,
-            )
+            self._tooltip = self._build_tooltip()
             changed = {
                 "IconName": self._icon_name,
                 "IconThemePath": self._icon_theme_path,
@@ -506,5 +503,16 @@ def _create_sni(
 
             self._menu_revision = dbus.UInt32(int(self._menu_revision) + 1)
             self.LayoutUpdated(self._menu_revision, dbus.Int32(0))
+
+        def _refresh_tooltip(self):
+            import dbus
+
+            self._tooltip = self._build_tooltip()
+            self.PropertiesChanged(
+                "org.kde.StatusNotifierItem",
+                {"ToolTip": self._tooltip},
+                dbus.Array([], signature="s"),
+            )
+            self.NewToolTip()
 
     return _SNI()

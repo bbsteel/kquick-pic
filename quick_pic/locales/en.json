@@ -2,6 +2,7 @@
   "code": "en",
   "name": "English",
   "messages": {
+    "tray.tooltip": "Click: screenshot  |  Right: menu",
     "tray.take_screenshot": "Take Screenshot",
     "tray.settings": "Settings",
     "tray.quit": "Quit",

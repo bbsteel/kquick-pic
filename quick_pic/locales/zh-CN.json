@@ -2,6 +2,7 @@
   "code": "zh-CN",
   "name": "简体中文",
   "messages": {
+    "tray.tooltip": "左键：截图  |  右键：菜单",
     "tray.take_screenshot": "截图",
     "tray.settings": "设置",
     "tray.quit": "退出",
