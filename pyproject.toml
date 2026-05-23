@@ -23,3 +23,9 @@ include = [
     "quick_pic/locales/*.json",
     "scripts/*.sh",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+    "pytest>=9.0.3",
+]
