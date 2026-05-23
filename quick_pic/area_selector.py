@@ -69,6 +69,8 @@ class AreaSelector:
         self._annotations: list[RectangleAnnotation | TextAnnotation] = []
         self._active_tool: str | None = None
         self._toolbar = None
+        self._toolbar_frame = None
+        self._undo_button = None
         self._text_buffer = None
         self._text_view = None
         self._text_editor = None
@@ -80,6 +82,7 @@ class AreaSelector:
         self._color_picker_button = None
         self._color_button_label = None
         self._color_palette = None
+        self._color_palette_frame = None
         self._pending_text_rect: tuple[int, int, int, int] | None = None
         self._selected_color_value = (255, 0, 0)
         self._selection_drag_origin: tuple[int, int, int, int] | None = None
@@ -125,37 +128,136 @@ class AreaSelector:
         drawing.set_app_paintable(True)
         win.add(container)
 
-        toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=6)
-        toolbar.set_border_width(8)
-        box_button = self._Gtk.ToggleButton()
-        box_button_label = self._Gtk.Label()
-        box_button.add(box_button_label)
-        box_button.set_tooltip_text(t("selector.draw_box"))
-        text_button = self._Gtk.ToggleButton(label="T")
-        text_button.set_tooltip_text(t("selector.add_text"))
-        color_picker_button = self._Gtk.Button()
-        color_picker_button.set_tooltip_text(t("selector.choose_color"))
-        color_button_label = self._Gtk.Label()
-        color_picker_button.add(color_button_label)
-        confirm_button = self._Gtk.Button(label="✓")
-        confirm_button.set_tooltip_text(t("selector.confirm"))
-        cancel_button = self._Gtk.Button(label="✕")
-        cancel_button.set_tooltip_text(t("selector.cancel"))
+        # --- CSS for toolbar styling ---
+        css_provider = self._Gtk.CssProvider()
+        css_provider.load_from_data(b"""
+            .qp-toolbar-frame {
+                border-radius: 8px;
+                border: 1px solid rgba(0, 0, 0, 0.10);
+            }
+            .qp-toolbar {
+                background: rgba(255, 255, 255, 0.92);
+                padding: 4px 3px;
+            }
+            .qp-toolbutton {
+                border: none;
+                background: transparent;
+                padding: 4px 10px;
+                border-radius: 4px;
+                color: #333;
+            }
+            .qp-toolbutton:hover {
+                background: rgba(0, 0, 0, 0.06);
+            }
+            .qp-toolbutton:active, .qp-toolbutton.active {
+                background: rgba(0, 0, 0, 0.12);
+            }
+            .qp-toolbutton label {
+                color: #333;
+            }
+            .qp-tool-text {
+                font-size: 10px;
+                margin-top: 2px;
+            }
+            .qp-palette-frame {
+                border-radius: 6px;
+                border: 1px solid rgba(0, 0, 0, 0.10);
+            }
+            .qp-palette {
+                background: rgba(255, 255, 255, 0.92);
+                padding: 3px 2px;
+            }
+            .qp-colorbutton {
+                border: none;
+                background: transparent;
+                padding: 3px 5px;
+                border-radius: 4px;
+            }
+            .qp-colorbutton:hover {
+                background: rgba(0, 0, 0, 0.06);
+            }
+            .qp-separator {
+                color: rgba(0, 0, 0, 0.12);
+                font-size: 14px;
+                padding: 0 2px;
+                margin: 0 4px;
+            }
+        """)
+        style_context = win.get_style_context()
+        style_context.add_provider(css_provider, self._Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        def _make_tool_button(icon_text, label_key, toggle=False):
+            btn = (self._Gtk.ToggleButton if toggle else self._Gtk.Button)()
+            box = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=4)
+            icon_label = self._Gtk.Label()
+            icon_label.set_markup(f'<span size="large">{icon_text}</span>')
+            icon_label.get_style_context().add_class("qp-tool-icon")
+            text_label = self._Gtk.Label(label=t(label_key))
+            text_label.get_style_context().add_class("qp-tool-text")
+            box.pack_start(icon_label, False, False, 0)
+            box.pack_start(text_label, False, False, 0)
+            btn.add(box)
+            btn.set_tooltip_text(t(label_key))
+            btn.get_style_context().add_class("qp-toolbutton")
+            return btn, icon_label
+
+        # --- Toolbar ---
+        toolbar_frame = self._Gtk.Frame()
+        toolbar_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
+        toolbar_frame.get_style_context().add_class("qp-toolbar-frame")
+
+        toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=1)
+        toolbar.get_style_context().add_class("qp-toolbar")
+
+        box_button, box_button_label = _make_tool_button("□", "selector.draw_box", toggle=True)
+        text_button, text_button_label_ = _make_tool_button("T", "selector.add_text", toggle=True)
+        color_picker_button, color_button_label = _make_tool_button("●", "selector.choose_color", toggle=False)
+        undo_button, undo_button_label_ = _make_tool_button("↩", "selector.undo", toggle=False)
+        confirm_button, confirm_button_label_ = _make_tool_button("✓", "selector.confirm", toggle=False)
+        cancel_button, cancel_button_label_ = _make_tool_button("✕", "selector.cancel", toggle=False)
+
         box_button.connect("toggled", self._on_tool_toggled, "box")
         text_button.connect("toggled", self._on_tool_toggled, "text")
         color_picker_button.connect("clicked", self._toggle_color_palette)
+        undo_button.connect("clicked", self._on_undo)
         confirm_button.connect("clicked", self._on_confirm)
         cancel_button.connect("clicked", self._on_cancel)
+
+        def _toggle_active_class(button):
+            if isinstance(button, self._Gtk.ToggleButton):
+                ctx = button.get_style_context()
+                if button.get_active():
+                    ctx.add_class("active")
+                else:
+                    ctx.remove_class("active")
+
+        box_button.connect("toggled", lambda b: _toggle_active_class(b))
+        text_button.connect("toggled", lambda b: _toggle_active_class(b))
+
         toolbar.pack_start(box_button, False, False, 0)
-        toolbar.pack_start(color_picker_button, False, False, 0)
         toolbar.pack_start(text_button, False, False, 0)
+        toolbar.pack_start(color_picker_button, False, False, 0)
+        toolbar.pack_start(undo_button, False, False, 0)
+        # separator before confirm/cancel
+        sep_label = self._Gtk.Label()
+        sep_label.set_markup('<span size="large">|</span>')
+        sep_label.get_style_context().add_class("qp-separator")
+        sep_label.set_opacity(0.3)
+        toolbar.pack_start(sep_label, False, False, 0)
         toolbar.pack_start(confirm_button, False, False, 0)
         toolbar.pack_start(cancel_button, False, False, 0)
-        container.put(toolbar, 16, 16)
-        toolbar.hide()
 
-        color_palette = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=4)
-        color_palette.set_border_width(6)
+        toolbar_frame.add(toolbar)
+        container.put(toolbar_frame, 16, 16)
+        toolbar_frame.hide()
+
+        # --- Color palette ---
+        color_palette_frame = self._Gtk.Frame()
+        color_palette_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
+        color_palette_frame.get_style_context().add_class("qp-palette-frame")
+
+        color_palette = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=2)
+        color_palette.get_style_context().add_class("qp-palette")
         for color_name, color_hex, rgb in (
             ("red", "#ff0000", (255, 0, 0)),
             ("green", "#00aa00", (0, 170, 0)),
@@ -164,14 +266,16 @@ class AreaSelector:
         ):
             color_button = self._Gtk.Button()
             color_button.set_tooltip_text(color_name.title())
+            color_button.get_style_context().add_class("qp-colorbutton")
             label = self._Gtk.Label()
             label.set_markup(f'<span foreground="{color_hex}" size="x-large">■</span>')
             color_button.add(label)
             color_button.connect("clicked", self._on_color_selected, rgb)
             color_palette.pack_start(color_button, False, False, 0)
             self._color_buttons[color_name] = color_button
-        container.put(color_palette, 16, 56)
-        color_palette.hide()
+        color_palette_frame.add(color_palette)
+        container.put(color_palette_frame, 16, 56)
+        color_palette_frame.hide()
 
         text_view = self._Gtk.TextView()
         text_view.set_wrap_mode(self._Gtk.WrapMode.WORD_CHAR)
@@ -203,6 +307,7 @@ class AreaSelector:
         text_editor.hide()
 
         self._toolbar = toolbar
+        self._toolbar_frame = toolbar_frame
         self._text_buffer = text_buffer
         self._text_view = text_view
         self._text_editor = text_editor
@@ -212,7 +317,9 @@ class AreaSelector:
         self._text_button = text_button
         self._color_picker_button = color_picker_button
         self._color_button_label = color_button_label
+        self._undo_button = undo_button
         self._color_palette = color_palette
+        self._color_palette_frame = color_palette_frame
         self._refresh_color_button()
         self._refresh_box_button()
 
@@ -225,8 +332,8 @@ class AreaSelector:
 
         win.fullscreen()
         win.show_all()
-        toolbar.hide()
-        color_palette.hide()
+        toolbar_frame.hide()
+        color_palette_frame.hide()
         text_editor.hide()
         drawing.grab_focus()
 
@@ -391,11 +498,11 @@ class AreaSelector:
             if self._gesture_kind == "select":
                 self._selection_rect = (x, y, w, h)
                 self._result = self._selection_rect
-                if self._toolbar:
-                    self._toolbar.show_all()
+                if self._toolbar_frame:
+                    self._toolbar_frame.show_all()
                     self._position_toolbar()
-                if self._color_palette:
-                    self._color_palette.hide()
+                if self._color_palette_frame:
+                    self._color_palette_frame.hide()
                 self._set_active_tool(None)
             elif self._gesture_kind == "box":
                 annotation_rect = self._relative_rect_within_selection((x, y, w, h))
@@ -470,12 +577,18 @@ class AreaSelector:
         self._result = None
         self._Gtk.main_quit()
 
+    def _on_undo(self, button) -> None:
+        if self._annotations:
+            self._annotations.pop()
+            if self._drawing is not None:
+                self._drawing.queue_draw()
+
     def _on_color_selected(self, button, color_value: tuple[int, int, int]) -> None:
         self._selected_color_value = color_value
         self._refresh_color_button()
         self._refresh_box_button()
-        if self._color_palette is not None:
-            self._color_palette.hide()
+        if self._color_palette_frame is not None:
+            self._color_palette_frame.hide()
 
     def _current_drag_rect(self) -> tuple[int, int, int, int]:
         return (
@@ -745,17 +858,17 @@ class AreaSelector:
         return self._selected_color_value
 
     def _position_toolbar(self) -> None:
-        if self._selection_rect is None or self._toolbar is None or self._container is None:
+        if self._selection_rect is None or self._toolbar_frame is None or self._container is None:
             return
         sx, sy, sw, sh = self._selection_rect
-        _, natural = self._toolbar.get_preferred_size()
+        _, natural = self._toolbar_frame.get_preferred_size()
         toolbar_width = natural.width
         toolbar_height = natural.height
         screen_width = self._background_pixbuf.get_width()
         screen_height = self._background_pixbuf.get_height()
         x = max(16, min(sx, screen_width - toolbar_width - 16))
         y = min(screen_height - toolbar_height - 16, sy + sh + 12)
-        self._container.move(self._toolbar, x, y)
+        self._container.move(self._toolbar_frame, x, y)
         self._position_color_palette(x, y + toolbar_height + 4)
 
     def _set_active_tool(self, tool_name: str | None) -> None:
@@ -823,27 +936,28 @@ class AreaSelector:
         self._finish_text_entry()
 
     def _toggle_color_palette(self, button) -> None:
-        if self._color_palette is None or self._toolbar is None:
+        if self._color_palette_frame is None or self._toolbar_frame is None:
             return
-        if self._color_palette.get_visible():
-            self._color_palette.hide()
+        if self._color_palette_frame.get_visible():
+            self._color_palette_frame.hide()
             return
-        _, natural = self._toolbar.get_preferred_size()
-        toolbar_x, toolbar_y = self._container.child_get_property(self._toolbar, "x"), self._container.child_get_property(self._toolbar, "y")
+        _, natural = self._toolbar_frame.get_preferred_size()
+        toolbar_x = self._container.child_get_property(self._toolbar_frame, "x")
+        toolbar_y = self._container.child_get_property(self._toolbar_frame, "y")
         self._position_color_palette(toolbar_x, toolbar_y + natural.height + 4)
-        self._color_palette.show_all()
+        self._color_palette_frame.show_all()
 
     def _position_color_palette(self, x: int, y: int) -> None:
-        if self._color_palette is None or self._container is None:
+        if self._color_palette_frame is None or self._container is None:
             return
-        self._container.move(self._color_palette, x, y)
+        self._container.move(self._color_palette_frame, x, y)
 
     def _refresh_color_button(self) -> None:
         if self._color_button_label is None:
             return
         red, green, blue = self._selected_color_value
         self._color_button_label.set_markup(
-            f'<span foreground="#{red:02x}{green:02x}{blue:02x}" size="x-large">■</span>'
+            f'<span foreground="#{red:02x}{green:02x}{blue:02x}" size="large">●</span>'
         )
 
     def _refresh_box_button(self) -> None:

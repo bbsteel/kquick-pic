@@ -28,6 +28,7 @@
     "selector.choose_color": "Choose color",
     "selector.confirm": "Confirm",
     "selector.cancel": "Cancel",
+    "selector.undo": "Undo",
     "selector.accept_text": "Accept text",
     "selector.cancel_text": "Cancel text",
     "autostart.name": "Quick Pic",

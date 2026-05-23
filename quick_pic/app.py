@@ -1,5 +1,7 @@
+import os
 import threading
 import logging
+from pathlib import Path
 
 from quick_pic.autostart import AutoStartManager
 from quick_pic.config import ConfigManager, AppConfig
@@ -10,6 +12,8 @@ from quick_pic.hotkey import HotkeyManager
 from quick_pic.tray import TrayManager
 
 logger = logging.getLogger(__name__)
+
+PID_FILE = Path.home() / ".config" / "quick-pic" / "quick-pic.pid"
 
 
 class QuickPicApp:
@@ -25,6 +29,9 @@ class QuickPicApp:
         self._config = self._config_manager.load()
         set_language(self._config.language)
         self._autostart_manager.apply(self._config)
+
+        PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PID_FILE.write_text(str(os.getpid()))
 
         self._tray_manager = TrayManager(
             on_screenshot=self._on_tray_screenshot,
@@ -47,6 +54,10 @@ class QuickPicApp:
             self._hotkey_manager.stop()
         if self._tray_manager:
             self._tray_manager.stop()
+        try:
+            PID_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
         logger.info("Shutdown complete")
 
     def _on_screenshot_triggered(self) -> None:

@@ -261,7 +261,7 @@ class TrayManager:
         if self._watcher_iface is None or self._sni is None:
             return
         try:
-            self._watcher_iface.RegisterStatusNotifierItem(SNI_OBJECT_PATH)
+            self._watcher_iface.RegisterStatusNotifierItem(self._bus_name.get_name())
             self._sni.NewIcon()
             self._sni.NewToolTip()
             self._sni.NewStatus("Active")

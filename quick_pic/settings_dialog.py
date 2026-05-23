@@ -153,8 +153,8 @@ class SettingsDialog:
         content.add(autostart_box)
 
         # -- Buttons --
-        self._cancel_button = self._dialog.add_button(t("settings.cancel"), Gtk.ResponseType.CANCEL)
         self._save_button = self._dialog.add_button(t("settings.save"), Gtk.ResponseType.OK)
+        self._cancel_button = self._dialog.add_button(t("settings.cancel"), Gtk.ResponseType.CANCEL)
         self._dialog.connect("response", self._on_response)
 
         content.show_all()
