@@ -1,11 +1,16 @@
 import math
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw
 
 from quick_pic.i18n import t
 
 ICON_NAME = "quick-pic-tray"
-ICON_DIR = Path(__file__).resolve().parent / "icons"
+
+if getattr(sys, 'frozen', False):
+    ICON_DIR = Path(sys._MEIPASS) / "quick_pic" / "icons"
+else:
+    ICON_DIR = Path(__file__).resolve().parent / "icons"
 
 THEMES = ["v1", "v2"]
 def _icon_path(theme: str) -> Path:

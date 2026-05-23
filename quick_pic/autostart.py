@@ -23,8 +23,14 @@ class AutoStartManager:
             logger.info("Autostart disabled")
 
     def _write_desktop_entry(self, config) -> None:
-        project_root = Path(__file__).resolve().parent.parent
-        python_executable = Path(sys.executable).resolve()
+        if getattr(sys, 'frozen', False):
+            exec_path = Path(sys.executable).resolve()
+            exec_cmd = str(exec_path)
+            working_dir = str(exec_path.parent)
+        else:
+            exec_cmd = f"{Path(sys.executable).resolve()} -m quick_pic"
+            working_dir = str(Path(__file__).resolve().parent.parent)
+
         icon_path = get_icon_path(config.icon_theme).resolve()
 
         desktop_entry = "\n".join(
@@ -34,8 +40,8 @@ class AutoStartManager:
                 "Version=1.0",
                 f"Name={t('autostart.name')}",
                 f"Comment={t('autostart.comment')}",
-                f"Exec={python_executable} -m quick_pic",
-                f"Path={project_root}",
+                f"Exec={exec_cmd}",
+                f"Path={working_dir}",
                 f"Icon={icon_path}",
                 "Terminal=false",
                 "Categories=Utility;Graphics;",

@@ -3,10 +3,14 @@ from pathlib import Path
 import json
 import locale
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
-BUILTIN_LOCALE_DIR = Path(__file__).resolve().parent / "locales"
+if getattr(sys, 'frozen', False):
+    BUILTIN_LOCALE_DIR = Path(sys._MEIPASS) / "quick_pic" / "locales"
+else:
+    BUILTIN_LOCALE_DIR = Path(__file__).resolve().parent / "locales"
 USER_LOCALE_DIR = Path.home() / ".config" / "quick-pic" / "locales"
 
 

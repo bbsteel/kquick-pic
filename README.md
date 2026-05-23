@@ -71,7 +71,36 @@ uv run python -m quick_pic
 
 ## 分发给别人
 
-### 打源码分发包
+### 方式一：构建单体可执行程序（推荐）
+
+使用 PyInstaller 构建为独立二进制，无需 uv/Python 运行环境：
+
+```bash
+./scripts/build-binary.sh
+```
+
+构建产物位于 `dist/quick-pic/`，可直接运行：
+
+```bash
+./dist/quick-pic/quick-pic
+```
+
+打包为 tar.gz 分发给别人：
+
+```bash
+./scripts/package-binary.sh
+# 输出: dist/quick-pic-0.1.0-linux-x86_64.tar.gz
+```
+
+对方解压即用，只需系统装有 GTK3/PyGObject/dbus-python（无需 uv/Python）：
+
+```bash
+tar -xzf quick-pic-0.1.0-linux-x86_64.tar.gz
+cd quick-pic
+./quick-pic
+```
+
+### 方式二：打源码分发包
 
 ```bash
 ./scripts/package-release.sh
