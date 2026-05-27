@@ -177,6 +177,7 @@ class SettingsDialog:
         )
         chooser.add_button(t("settings.cancel"), self._Gtk.ResponseType.CANCEL)
         chooser.add_button(t("settings.select"), self._Gtk.ResponseType.OK)
+        chooser.set_show_hidden(True)
         chooser.set_current_folder(self._path_entry.get_text())
         if chooser.run() == self._Gtk.ResponseType.OK:
             self._path_entry.set_text(chooser.get_filename())
