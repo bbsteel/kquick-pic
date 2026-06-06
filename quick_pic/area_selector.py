@@ -125,16 +125,16 @@ class AreaSelector:
             }
             .qp-toolbutton {
                 border: none;
-                background: transparent;
+                background: #ffffff;
                 padding: 4px 10px;
                 border-radius: 4px;
                 color: #333;
             }
             .qp-toolbutton:hover {
-                background: rgba(0, 0, 0, 0.06);
+                background: #f0f0f0;
             }
             .qp-toolbutton:active, .qp-toolbutton.active, .qp-toolbutton:checked {
-                border-bottom: 2px solid #5599ff;
+                background: #e0e0e0;
             }
             .qp-toolbutton label {
                 color: #333;
