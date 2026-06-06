@@ -551,10 +551,15 @@ class AreaSelector:
 
     def _on_tool_toggled(self, button, tool_name: str) -> None:
         if button.get_active():
-            if tool_name == "box" and self._text_button.get_active():
-                self._text_button.set_active(False)
-            elif tool_name == "text" and self._box_button.get_active():
-                self._box_button.set_active(False)
+            all_tool_buttons = {
+                "box": self._box_button,
+                "text": self._text_button,
+                "line": self._line_button,
+                "arrow": self._arrow_button,
+            }
+            for name, btn in all_tool_buttons.items():
+                if name != tool_name and btn is not None and btn.get_active():
+                    btn.set_active(False)
             self._set_active_tool(tool_name)
         elif self._active_tool == tool_name:
             if tool_name == "text":
