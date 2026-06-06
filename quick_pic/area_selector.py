@@ -454,6 +454,14 @@ class AreaSelector:
             self._end_x = event.x
             self._end_y = event.y
             widget.queue_draw()
+        elif event.button == 1 and self._active_tool in ("line", "arrow") and self._point_in_selection(event.x, event.y):
+            self._dragging = True
+            self._gesture_kind = self._active_tool
+            self._start_x = event.x
+            self._start_y = event.y
+            self._end_x = event.x
+            self._end_y = event.y
+            widget.queue_draw()
         elif event.button == 1 and self._selection_rect is not None and self._can_edit_selection():
             selection_handle = self._selection_hit_test(event.x, event.y)
             if selection_handle is not None:
@@ -491,6 +499,16 @@ class AreaSelector:
                 widget.queue_draw()
                 return
 
+            if self._gesture_kind in ("line", "arrow"):
+                dx = abs(self._end_x - self._start_x)
+                dy = abs(self._end_y - self._start_y)
+                if dx < 4 and dy < 4:
+                    self._dragging = False
+                    self._gesture_kind = None
+                    self._update_idle_cursor(event.x, event.y)
+                    widget.queue_draw()
+                    return
+
             if self._gesture_kind == "select":
                 self._selection_rect = (x, y, w, h)
                 self._result = self._selection_rect
@@ -513,6 +531,20 @@ class AreaSelector:
                 text_rect = self._normalized_text_rect_within_selection((x, y, w, h))
                 if text_rect is not None:
                     self._show_text_entry(text_rect)
+            elif self._gesture_kind == "line":
+                annotation = self._relative_line_within_selection(
+                    (self._start_x, self._start_y),
+                    (self._end_x, self._end_y),
+                )
+                if annotation is not None:
+                    self._annotations.append(annotation)
+            elif self._gesture_kind == "arrow":
+                annotation = self._relative_arrow_within_selection(
+                    (self._start_x, self._start_y),
+                    (self._end_x, self._end_y),
+                )
+                if annotation is not None:
+                    self._annotations.append(annotation)
             elif self._gesture_kind and self._gesture_kind.startswith("selection-"):
                 self._selection_drag_origin = None
 
@@ -663,6 +695,48 @@ class AreaSelector:
             return None
 
         return (left - sx, top - sy, right - left, bottom - top)
+
+    def _relative_line_within_selection(
+        self,
+        start_abs: tuple[float, float],
+        end_abs: tuple[float, float],
+    ) -> "LineAnnotation | None":
+        from quick_pic.annotations import LineAnnotation
+        if self._selection_rect is None:
+            return None
+        sx, sy, sw, sh = self._selection_rect
+        x1 = max(sx, min(start_abs[0], sx + sw))
+        y1 = max(sy, min(start_abs[1], sy + sh))
+        x2 = max(sx, min(end_abs[0], sx + sw))
+        y2 = max(sy, min(end_abs[1], sy + sh))
+        if int(x1) == int(x2) and int(y1) == int(y2):
+            return None
+        return LineAnnotation(
+            start=(int(x1 - sx), int(y1 - sy)),
+            end=(int(x2 - sx), int(y2 - sy)),
+            color=self._selected_color(),
+        )
+
+    def _relative_arrow_within_selection(
+        self,
+        start_abs: tuple[float, float],
+        end_abs: tuple[float, float],
+    ) -> "ArrowAnnotation | None":
+        from quick_pic.annotations import ArrowAnnotation
+        if self._selection_rect is None:
+            return None
+        sx, sy, sw, sh = self._selection_rect
+        x1 = max(sx, min(start_abs[0], sx + sw))
+        y1 = max(sy, min(start_abs[1], sy + sh))
+        x2 = max(sx, min(end_abs[0], sx + sw))
+        y2 = max(sy, min(end_abs[1], sy + sh))
+        if int(x1) == int(x2) and int(y1) == int(y2):
+            return None
+        return ArrowAnnotation(
+            start=(int(x1 - sx), int(y1 - sy)),
+            end=(int(x2 - sx), int(y2 - sy)),
+            color=self._selected_color(),
+        )
 
     def _normalized_text_rect_within_selection(
         self,
