@@ -117,6 +117,7 @@ class AreaSelector:
             .qp-toolbar-frame {
                 border-radius: 8px;
                 border: 1px solid rgba(0, 0, 0, 0.10);
+                background: rgba(255, 255, 255, 0.92);
             }
             .qp-toolbar {
                 background: rgba(255, 255, 255, 0.92);
