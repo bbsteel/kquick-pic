@@ -420,6 +420,20 @@ class AreaSelector:
                 dashed=True,
             )
 
+        if self._dragging and self._gesture_kind == "line" and self._selection_rect is not None:
+            sx, sy, _, _ = self._selection_rect
+            start_rel = (int(self._start_x - sx), int(self._start_y - sy))
+            end_rel = (int(self._end_x - sx), int(self._end_y - sy))
+            from quick_pic.annotations import draw_line_preview
+            draw_line_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=True)
+
+        if self._dragging and self._gesture_kind == "arrow" and self._selection_rect is not None:
+            sx, sy, _, _ = self._selection_rect
+            start_rel = (int(self._start_x - sx), int(self._start_y - sy))
+            end_rel = (int(self._end_x - sx), int(self._end_y - sy))
+            from quick_pic.annotations import draw_arrow_preview
+            draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=True)
+
     def _on_button_press(self, widget, event):
         if (
             event.button == 1
