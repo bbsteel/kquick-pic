@@ -57,6 +57,10 @@ class AreaSelector:
         self._box_button = None
         self._box_button_label = None
         self._text_button = None
+        self._line_button = None
+        self._line_button_label = None
+        self._arrow_button = None
+        self._arrow_button_label = None
         self._color_buttons: dict[str, object] = {}
         self._color_picker_button = None
         self._color_button_label = None
@@ -190,6 +194,8 @@ class AreaSelector:
 
         box_button, box_button_label = _make_tool_button("□", "selector.draw_box", toggle=True)
         text_button, text_button_label_ = _make_tool_button("T", "selector.add_text", toggle=True)
+        line_button, line_button_label = _make_tool_button("╱", "selector.draw_line", toggle=True)
+        arrow_button, arrow_button_label = _make_tool_button("→", "selector.draw_arrow", toggle=True)
         color_picker_button, color_button_label = _make_tool_button("●", "selector.choose_color", toggle=False)
         undo_button, undo_button_label_ = _make_tool_button("↩", "selector.undo", toggle=False)
         confirm_button, confirm_button_label_ = _make_tool_button("✓", "selector.confirm", toggle=False)
@@ -197,6 +203,8 @@ class AreaSelector:
 
         box_button.connect("toggled", self._on_tool_toggled, "box")
         text_button.connect("toggled", self._on_tool_toggled, "text")
+        line_button.connect("toggled", self._on_tool_toggled, "line")
+        arrow_button.connect("toggled", self._on_tool_toggled, "arrow")
         color_picker_button.connect("clicked", self._toggle_color_palette)
         undo_button.connect("clicked", self._on_undo)
         confirm_button.connect("clicked", self._on_confirm)
@@ -212,9 +220,13 @@ class AreaSelector:
 
         box_button.connect("toggled", lambda b: _toggle_active_class(b))
         text_button.connect("toggled", lambda b: _toggle_active_class(b))
+        line_button.connect("toggled", lambda b: _toggle_active_class(b))
+        arrow_button.connect("toggled", lambda b: _toggle_active_class(b))
 
         toolbar.pack_start(box_button, False, False, 0)
         toolbar.pack_start(text_button, False, False, 0)
+        toolbar.pack_start(line_button, False, False, 0)
+        toolbar.pack_start(arrow_button, False, False, 0)
         toolbar.pack_start(color_picker_button, False, False, 0)
         toolbar.pack_start(undo_button, False, False, 0)
         # separator before confirm/cancel
@@ -294,6 +306,10 @@ class AreaSelector:
         self._box_button = box_button
         self._box_button_label = box_button_label
         self._text_button = text_button
+        self._line_button = line_button
+        self._line_button_label = line_button_label
+        self._arrow_button = arrow_button
+        self._arrow_button_label = arrow_button_label
         self._color_picker_button = color_picker_button
         self._color_button_label = color_button_label
         self._undo_button = undo_button
