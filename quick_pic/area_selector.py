@@ -402,23 +402,13 @@ class AreaSelector:
             else:
                 preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
             if preview_rect is not None:
-                self._draw_rectangle_annotation(
-                    cr,
-                    RectangleAnnotation(
-                        rect=preview_rect,
-                        color=self._selected_color(),
-                    ),
-                    dashed=True,
-                )
+                sx, sy, _, _ = self._selection_rect
+                from quick_pic.annotations import _draw_rectangle_annotation as _dra
+                _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=True)
         elif self._pending_text_rect is not None:
-            self._draw_rectangle_annotation(
-                cr,
-                RectangleAnnotation(
-                    rect=self._pending_text_rect,
-                    color=self._selected_color(),
-                ),
-                dashed=True,
-            )
+            sx, sy, _, _ = self._selection_rect
+            from quick_pic.annotations import _draw_rectangle_annotation as _dra
+            _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_color()), sx, sy, dashed=True)
 
         if self._dragging and self._gesture_kind == "line" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
@@ -771,11 +761,11 @@ class AreaSelector:
         return (x, y, w, h)
 
     def _draw_annotations(self, cr) -> None:
-        for annotation in self._annotations:
-            if isinstance(annotation, RectangleAnnotation):
-                self._draw_rectangle_annotation(cr, annotation)
-            else:
-                self._draw_text_annotation(cr, annotation)
+        if self._selection_rect is None:
+            return
+        sx, sy, _, _ = self._selection_rect
+        from quick_pic.annotations import render_annotations
+        render_annotations(cr, self._annotations, origin_x=sx, origin_y=sy)
 
     def _drag_preview_screen_rect(
         self,
@@ -911,45 +901,6 @@ class AreaSelector:
         for hx, hy in handles:
             cr.rectangle(hx - half, hy - half, self._SELECTION_HANDLE_SIZE, self._SELECTION_HANDLE_SIZE)
             cr.fill()
-
-    def _draw_rectangle_annotation(self, cr, annotation: RectangleAnnotation, dashed: bool = False) -> None:
-        if self._selection_rect is None:
-            return
-        sx, sy, _, _ = self._selection_rect
-        x, y, w, h = annotation.rect
-        red, green, blue = annotation.color
-        cr.set_source_rgba(red / 255.0, green / 255.0, blue / 255.0, 0.95)
-        cr.set_line_width(3)
-        cr.set_dash([8, 4], 0 if dashed else 0)
-        if not dashed:
-            cr.set_dash([], 0)
-        cr.rectangle(sx + x + 1.5, sy + y + 1.5, max(1, w - 3), max(1, h - 3))
-        cr.stroke()
-        cr.set_dash([], 0)
-
-    def _draw_text_annotation(self, cr, annotation: TextAnnotation) -> None:
-        if self._selection_rect is None:
-            return
-        sx, sy, _, _ = self._selection_rect
-        x, y, w, h = annotation.rect
-        layout = self._PangoCairo.create_layout(cr)
-        layout.set_text(annotation.text, -1)
-        layout.set_font_description(self._Pango.FontDescription(self._TEXT_FONT))
-        layout.set_width(max(1, w - self._TEXT_PADDING_X * 2) * self._Pango.SCALE)
-        layout.set_wrap(self._Pango.WrapMode.WORD_CHAR)
-        cr.save()
-        cr.rectangle(sx + x, sy + y, w, h)
-        cr.clip()
-        draw_x = sx + x + self._TEXT_PADDING_X
-        draw_y = sy + y + self._TEXT_PADDING_Y
-        cr.set_source_rgba(0, 0, 0, 0.65)
-        cr.move_to(draw_x + 1, draw_y + 1)
-        self._PangoCairo.show_layout(cr, layout)
-        red, green, blue = annotation.color
-        cr.set_source_rgba(red / 255.0, green / 255.0, blue / 255.0, 0.95)
-        cr.move_to(draw_x, draw_y)
-        self._PangoCairo.show_layout(cr, layout)
-        cr.restore()
 
     def _selected_color(self) -> tuple[int, int, int]:
         return self._selected_color_value
