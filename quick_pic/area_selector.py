@@ -117,24 +117,23 @@ class AreaSelector:
             .qp-toolbar-frame {
                 border-radius: 8px;
                 border: 1px solid rgba(0, 0, 0, 0.10);
-                background: #ffffff;
             }
             .qp-toolbar {
-                background: #ffffff;
+                background: rgba(255, 255, 255, 0.92);
                 padding: 4px 3px;
             }
             .qp-toolbutton {
                 border: none;
-                background: #ffffff;
+                background: transparent;
                 padding: 4px 10px;
                 border-radius: 4px;
                 color: #333;
             }
             .qp-toolbutton:hover {
-                background: #f0f0f0;
+                background: rgba(0, 0, 0, 0.06);
             }
-            .qp-toolbutton:active, .qp-toolbutton.active, .qp-toolbutton:checked {
-                background: #e0e0e0;
+            .qp-toolbutton:active, .qp-toolbutton.active {
+                background: rgba(0, 0, 0, 0.12);
             }
             .qp-toolbutton label {
                 color: #333;
@@ -186,7 +185,8 @@ class AreaSelector:
             return btn, icon_label
 
         # --- Toolbar ---
-        toolbar_frame = self._Gtk.EventBox()
+        toolbar_frame = self._Gtk.Frame()
+        toolbar_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
         toolbar_frame.get_style_context().add_class("qp-toolbar-frame")
 
         toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=1)
