@@ -1,31 +1,10 @@
-from dataclasses import dataclass
 import logging
 from pathlib import Path
 
 from quick_pic.i18n import t
+from quick_pic.annotations import SelectionResult, RectangleAnnotation, TextAnnotation, LineAnnotation, ArrowAnnotation
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class SelectionResult:
-    rect: tuple[int, int, int, int]
-    screenshot_path: Path
-    annotations: list["RectangleAnnotation | TextAnnotation"]
-
-
-@dataclass(frozen=True)
-class RectangleAnnotation:
-    rect: tuple[int, int, int, int]
-    color: tuple[int, int, int]
-
-
-@dataclass(frozen=True)
-class TextAnnotation:
-    rect: tuple[int, int, int, int]
-    text: str
-    color: tuple[int, int, int]
-
 
 class AreaSelector:
     """GTK3 fullscreen overlay for selecting a screen region.
@@ -66,7 +45,7 @@ class AreaSelector:
         self._container = None
         self._selection_rect: tuple[int, int, int, int] | None = None
         self._gesture_kind: str | None = None
-        self._annotations: list[RectangleAnnotation | TextAnnotation] = []
+        self._annotations: list[RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation] = []
         self._active_tool: str | None = None
         self._toolbar = None
         self._toolbar_frame = None
