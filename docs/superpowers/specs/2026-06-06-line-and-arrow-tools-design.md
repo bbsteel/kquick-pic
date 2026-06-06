@@ -1,20 +1,20 @@
-# Line and Arrow Annotation Tools
+# 直线与箭头标注工具
 
-## Overview
+## 概述
 
-Add two new drawing tools to the screenshot annotation system: a straight line tool and an arrow tool.
+在截图标注系统中新增两个绘图工具：无箭头直线和带箭头直线。
 
-## Design
+## 设计
 
-### Data Model (`area_selector.py`)
+### 数据模型（`area_selector.py`）
 
-Two new frozen dataclasses:
+新增两个 frozen dataclass，与 `RectangleAnnotation` / `TextAnnotation` 同级：
 
 ```python
 @dataclass(frozen=True)
 class LineAnnotation:
-    start: tuple[int, int]     # (x, y) start point, relative to selection
-    end: tuple[int, int]       # (x, y) end point, relative to selection
+    start: tuple[int, int]     # (x, y) 起点，相对于选区
+    end: tuple[int, int]       # (x, y) 终点，相对于选区
     color: tuple[int, int, int]
 
 @dataclass(frozen=True)
@@ -24,51 +24,51 @@ class ArrowAnnotation:
     color: tuple[int, int, int]
 ```
 
-Both share the same structure but are distinct types so rendering code can branch on type.
+两者结构相同，但类型不同，以便渲染时分派到各自的绘制逻辑。
 
-### Toolbar Buttons
+### 工具栏按钮
 
-Two new toggle buttons, mutually exclusive with `box`, `text`, and each other:
+新增两个切换按钮，与 `box`、`text` 及彼此之间互斥：
 
-- `—` Straight line (i18n key: `selector.draw_line`)
-- `→` Arrow (i18n key: `selector.draw_arrow`)
+- `—` 直线（i18n key: `selector.draw_line`）
+- `→` 箭头（i18n key: `selector.draw_arrow`）
 
-### Interaction (Drag Start → Drag → Release)
+### 交互（按下拖拽 → 释放）
 
-Same as existing box/text tools:
-- Click in selection area → begin gesture
-- Drag → dashed preview line from start to current cursor
-- Release → commit annotation to `self._annotations`
+与现有矩形/文字工具一致：
+- 在选区内按下鼠标 → 开始手势
+- 拖拽 → 虚线预览从起点到当前光标位置
+- 释放 → 将 `LineAnnotation` 或 `ArrowAnnotation` 提交到 `self._annotations`
 
-Both tools set `self._gesture_kind` to `"line"` or `"arrow"`, with `self._gesture_start` holding the start point.
+两个工具分别将 `self._gesture_kind` 设为 `"line"` 或 `"arrow"`，用 `self._gesture_start` 记录起点。
 
-### Keyboard Cursor
+### 光标
 
-In line or arrow mode, cursor changes to crosshair while inside the selection area.
+进入直线或箭头模式后，鼠标在选区内时显示十字光标。
 
-### Cairo Rendering (`area_selector.py`)
+### Cairo 渲染（`area_selector.py`）
 
-**Preview (drag in progress):**
-- Dashed line from start to current mouse position
-- Width 2px, color = selected color
+**预览（拖拽中）：**
+- 从起点到当前鼠标位置的虚线
+- 宽度 2px，颜色为用户所选色
 
-**Final line:**
-- Solid line, width 3px
+**最终直线：**
+- 实线，宽度 3px
 
-**Final arrow:**
-- Same solid line as above
-- Plus an open V-shaped arrowhead at the end point:
-  - Two short lines (12px each) extending backward from the end point
-  - Spread angle: ±22.5° from the line direction (total 45° opening)
-  - Same color and width as the line
+**最终箭头：**
+- 同上实线
+- 终点处添加八字形开口箭头（V 形）：
+  - 从终点向后方延伸两条 12px 短线
+  - 展开角度：偏离线方向 ±22.5°（总开口 45°）
+  - 颜色和线宽与直线一致
 
-### Final Image Rendering (`screenshot.py`)
+### 最终图片渲染（`screenshot.py`）
 
-`_apply_annotations()` gets two new `isinstance` branches for `LineAnnotation` and `ArrowAnnotation`, duplicating the same drawing logic. Arrowhead is computed via trigonometry (atan2 for angle, then offset backward along the line).
+`_apply_annotations()` 新增两个 `isinstance` 分支处理 `LineAnnotation` 和 `ArrowAnnotation`，逻辑与 `area_selector.py` 中的绘制一致。箭头方向通过 `atan2` 计算，然后沿直线方向向后偏移。
 
-### Undo
+### 撤销
 
-Works automatically via the existing `_on_undo` which pops the last annotation. Both `LineAnnotation` and `ArrowAnnotation` are items in the same list.
+通过现有的 `_on_undo`（弹出最后一条标注）自动支持。`LineAnnotation` 和 `ArrowAnnotation` 与其他标注同在一个列表中。
 
 ### i18n
 
@@ -77,18 +77,18 @@ Works automatically via the existing `_on_undo` which pops the last annotation. 
 | `selector.draw_line` | Draw Line | 直线 |
 | `selector.draw_arrow` | Draw Arrow | 箭头 |
 
-### Files Changed
+### 涉及文件
 
-| File | Change |
+| 文件 | 改动 |
 |---|---|
-| `quick_pic/area_selector.py` | New dataclasses, buttons, gesture handling, Cairo drawing methods |
-| `quick_pic/screenshot.py` | New annotation rendering branches in `_apply_annotations` |
-| `quick_pic/locales/en.json` | Two new keys |
-| `quick_pic/locales/zh-CN.json` | Two new keys |
+| `quick_pic/area_selector.py` | 新增 dataclass、按钮、手势处理、Cairo 绘制方法 |
+| `quick_pic/screenshot.py` | `_apply_annotations` 新增直线/箭头渲染分支 |
+| `quick_pic/locales/en.json` | 两个新 key |
+| `quick_pic/locales/zh-CN.json` | 两个新 key |
 
-### Out of Scope
+### 不纳入范围
 
-- Arrowhead style configuration (always open V-shape)
-- Line width configuration (always 3px)
-- Freehand/pencil drawing
-- Other shapes (circle, ellipse)
+- 箭头样式可配置（固定在八字开口 V 形）
+- 线宽可配置（固定 3px）
+- 自由绘制/铅笔工具
+- 其他图形（圆、椭圆等）
