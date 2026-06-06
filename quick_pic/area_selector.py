@@ -133,8 +133,8 @@ class AreaSelector:
             .qp-toolbutton:hover {
                 background: rgba(0, 0, 0, 0.06);
             }
-            .qp-toolbutton:active, .qp-toolbutton.active {
-                background: rgba(0, 0, 0, 0.12);
+            .qp-toolbutton:active, .qp-toolbutton.active, .qp-toolbutton:checked {
+                border-bottom: 2px solid #5599ff;
             }
             .qp-toolbutton label {
                 color: #333;
