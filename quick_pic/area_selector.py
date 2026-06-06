@@ -792,6 +792,14 @@ class AreaSelector:
             return self._screen_rect_from_selection_relative(
                 self._normalized_text_rect_within_selection(drag_rect)
             )
+        if gesture_kind in ("line", "arrow"):
+            if self._selection_rect is None:
+                return None
+            x1 = min(self._start_x, self._end_x)
+            y1 = min(self._start_y, self._end_y)
+            x2 = max(self._start_x, self._end_x)
+            y2 = max(self._start_y, self._end_y)
+            return (int(x1), int(y1), int(x2 - x1), int(y2 - y1))
         if gesture_kind and gesture_kind.startswith("selection-"):
             return self._selection_rect
         return None
@@ -878,7 +886,7 @@ class AreaSelector:
         self._set_window_cursor(cursor_name)
 
     def _update_idle_cursor(self, x: float, y: float) -> None:
-        if self._active_tool == "box":
+        if self._active_tool in ("box", "line", "arrow"):
             self._set_window_cursor("crosshair")
             return
         if self._active_tool is not None or self._pending_text_rect is not None:
@@ -962,7 +970,7 @@ class AreaSelector:
 
     def _set_active_tool(self, tool_name: str | None) -> None:
         self._active_tool = tool_name
-        cursor_name = "crosshair" if tool_name == "box" else None
+        cursor_name = "crosshair" if tool_name in ("box", "line", "arrow") else None
         self._set_window_cursor(cursor_name)
 
     def _set_window_cursor(self, cursor_name: str | None) -> None:
