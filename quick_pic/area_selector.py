@@ -117,10 +117,10 @@ class AreaSelector:
             .qp-toolbar-frame {
                 border-radius: 8px;
                 border: 1px solid rgba(0, 0, 0, 0.10);
-                background: rgba(255, 255, 255, 0.92);
+                background: #ffffff;
             }
             .qp-toolbar {
-                background: rgba(255, 255, 255, 0.92);
+                background: #ffffff;
                 padding: 4px 3px;
             }
             .qp-toolbutton {
@@ -186,9 +186,7 @@ class AreaSelector:
             return btn, icon_label
 
         # --- Toolbar ---
-        toolbar_frame = self._Gtk.Frame()
-        toolbar_frame.set_shadow_type(self._Gtk.ShadowType.NONE)
-        toolbar_frame.set_app_paintable(True)
+        toolbar_frame = self._Gtk.EventBox()
         toolbar_frame.get_style_context().add_class("qp-toolbar-frame")
 
         toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=1)
@@ -405,11 +403,11 @@ class AreaSelector:
             if preview_rect is not None:
                 sx, sy, _, _ = self._selection_rect
                 from quick_pic.annotations import _draw_rectangle_annotation as _dra
-                _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=True)
+                _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=False)
         elif self._pending_text_rect is not None:
             sx, sy, _, _ = self._selection_rect
             from quick_pic.annotations import _draw_rectangle_annotation as _dra
-            _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_color()), sx, sy, dashed=True)
+            _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_color()), sx, sy, dashed=False)
 
         if self._dragging and self._gesture_kind == "line" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
