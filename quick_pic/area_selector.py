@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 
 from quick_pic.i18n import t
@@ -18,18 +19,20 @@ class AreaSelector:
     _SELECTION_HANDLE_MARGIN = 10
     _SELECTION_HANDLE_SIZE = 8
     _MIN_SELECTION_SIZE = 24
+    _MOTION_MIN_INTERVAL = 0.008  # 125Hz cap on drag motion processing
 
     def __init__(self):
         import gi
         gi.require_version("Gtk", "3.0")
         gi.require_version("Pango", "1.0")
         gi.require_version("PangoCairo", "1.0")
-        from gi.repository import Gtk, Gdk, GdkPixbuf
+        from gi.repository import Gtk, Gdk, GdkPixbuf, GLib
         from gi.repository import Pango, PangoCairo
 
         self._Gtk = Gtk
         self._Gdk = Gdk
         self._GdkPixbuf = GdkPixbuf
+        self._GLib = GLib
         self._Pango = Pango
         self._PangoCairo = PangoCairo
         self._result: tuple[int, int, int, int] | None = None
@@ -38,6 +41,9 @@ class AreaSelector:
         self._end_x = 0.0
         self._end_y = 0.0
         self._dragging = False
+        self._motion_pending = False
+        self._motion_pending_event: tuple[float, float] | None = None
+        self._last_motion_time = 0.0
         self._screenshot_path: Path | None = None
         self._background_pixbuf = None
         self._drawing = None
@@ -486,6 +492,8 @@ class AreaSelector:
     def _on_button_release(self, widget, event):
         if event.button == 1 and self._dragging:
             self._dragging = False
+            self._motion_pending_event = None
+            self._motion_pending = False
             self._end_x = event.x
             self._end_y = event.y
 
@@ -549,6 +557,7 @@ class AreaSelector:
                 if annotation is not None:
                     self._annotations.append(annotation)
             elif self._gesture_kind and self._gesture_kind.startswith("selection-"):
+                self._update_selection_drag()
                 self._selection_drag_origin = None
                 self._position_toolbar()
 
@@ -558,18 +567,40 @@ class AreaSelector:
             widget.queue_draw()
 
     def _on_motion(self, widget, event):
-        if self._dragging:
-            previous_rect = self._drag_redraw_rect()
-            old_x, old_y = self._end_x, self._end_y
-            self._end_x = event.x
-            self._end_y = event.y
-            # Only redraw if position changed enough to avoid jitter
-            if abs(old_x - self._end_x) > 0.5 or abs(old_y - self._end_y) > 0.5:
-                if self._gesture_kind and self._gesture_kind.startswith("selection-"):
-                    self._update_selection_drag()
-                self._queue_drag_redraw(previous_rect)
-        else:
+        if not self._dragging:
             self._update_idle_cursor(event.x, event.y)
+            return
+        self._motion_pending_event = (event.x, event.y)
+        if self._motion_pending:
+            return
+        now = time.monotonic()
+        elapsed = now - self._last_motion_time
+        if elapsed >= self._MOTION_MIN_INTERVAL:
+            self._flush_motion()
+        else:
+            self._motion_pending = True
+            wait_ms = max(1, int((self._MOTION_MIN_INTERVAL - elapsed) * 1000))
+            self._GLib.timeout_add(wait_ms, self._motion_timeout_cb)
+
+    def _motion_timeout_cb(self):
+        self._motion_pending = False
+        self._flush_motion()
+        return False
+
+    def _flush_motion(self):
+        if self._motion_pending_event is None or not self._dragging:
+            return
+        x, y = self._motion_pending_event
+        self._motion_pending_event = None
+        self._last_motion_time = time.monotonic()
+        if abs(self._end_x - x) <= 0.5 and abs(self._end_y - y) <= 0.5:
+            return
+        previous_rect = self._drag_redraw_rect()
+        self._end_x = x
+        self._end_y = y
+        if self._gesture_kind and self._gesture_kind.startswith("selection-"):
+            self._update_selection_drag()
+        self._queue_drag_redraw(previous_rect)
 
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
