@@ -187,7 +187,8 @@ class AreaSelector:
 
         # --- Toolbar ---
         toolbar_frame = self._Gtk.Frame()
-        toolbar_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
+        toolbar_frame.set_shadow_type(self._Gtk.ShadowType.NONE)
+        toolbar_frame.set_app_paintable(True)
         toolbar_frame.get_style_context().add_class("qp-toolbar-frame")
 
         toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=1)
@@ -415,14 +416,14 @@ class AreaSelector:
             start_rel = (int(self._start_x - sx), int(self._start_y - sy))
             end_rel = (int(self._end_x - sx), int(self._end_y - sy))
             from quick_pic.annotations import draw_line_preview
-            draw_line_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=True)
+            draw_line_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
         if self._dragging and self._gesture_kind == "arrow" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
             start_rel = (int(self._start_x - sx), int(self._start_y - sy))
             end_rel = (int(self._end_x - sx), int(self._end_y - sy))
             from quick_pic.annotations import draw_arrow_preview
-            draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=True)
+            draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
     def _on_button_press(self, widget, event):
         if (
