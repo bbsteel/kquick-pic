@@ -550,6 +550,7 @@ class AreaSelector:
                     self._annotations.append(annotation)
             elif self._gesture_kind and self._gesture_kind.startswith("selection-"):
                 self._selection_drag_origin = None
+                self._position_toolbar()
 
             self._dragging = False
             self._gesture_kind = None
@@ -809,6 +810,10 @@ class AreaSelector:
     def _queue_drag_redraw(self, previous_rect: tuple[int, int, int, int] | None) -> None:
         if self._drawing is None:
             return
+        if self._gesture_kind and self._gesture_kind.startswith("selection-"):
+            for rect in (previous_rect, self._selection_rect):
+                self._queue_rect_border_redraw(rect)
+            return
         for rect in (
             previous_rect,
             self._drag_preview_screen_rect(self._current_drag_rect(), self._gesture_kind),
@@ -823,6 +828,23 @@ class AreaSelector:
                 w + padding * 2,
                 h + padding * 2,
             )
+
+    def _queue_rect_border_redraw(self, rect: tuple[int, int, int, int] | None) -> None:
+        # Invalidate only the 4 border strips so resize redraws don't touch the rect interior.
+        # Padding = handle margin + handle half-size + border width + slack.
+        if self._drawing is None or rect is None:
+            return
+        x, y, w, h = rect
+        pad = self._SELECTION_HANDLE_MARGIN + self._SELECTION_HANDLE_SIZE + 6
+        strip = pad * 2
+        left = max(0, x - pad)
+        top = max(0, y - pad)
+        full_w = w + pad * 2
+        full_h = h + pad * 2
+        self._drawing.queue_draw_area(left, top, full_w, strip)
+        self._drawing.queue_draw_area(left, max(0, y + h - pad), full_w, strip)
+        self._drawing.queue_draw_area(left, top, strip, full_h)
+        self._drawing.queue_draw_area(max(0, x + w - pad), top, strip, full_h)
 
     def _update_selection_drag(self) -> None:
         if self._selection_drag_origin is None or self._background_pixbuf is None or self._gesture_kind is None:
@@ -858,7 +880,6 @@ class AreaSelector:
             self._selection_rect = (left, top, right - left, bottom - top)
 
         self._result = self._selection_rect
-        self._position_toolbar()
 
     def _apply_selection_cursor(self, handle: str | None) -> None:
         cursor_name = {
