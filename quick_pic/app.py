@@ -1,14 +1,16 @@
-import os
-import threading
+import glob
 import logging
+import os
 from pathlib import Path
 
+from gi.repository import GLib
+
 from quick_pic.autostart import AutoStartManager
-from quick_pic.config import ConfigManager, AppConfig
+from quick_pic.clipboard import ClipboardManager
+from quick_pic.config import AppConfig, ConfigManager
+from quick_pic.hotkey import HotkeyManager
 from quick_pic.i18n import set_language, t
 from quick_pic.screenshot import ScreenshotCapture
-from quick_pic.clipboard import ClipboardManager
-from quick_pic.hotkey import HotkeyManager
 from quick_pic.tray import TrayManager
 
 logger = logging.getLogger(__name__)
@@ -30,11 +32,13 @@ class QuickPicApp:
         set_language(self._config.language)
         self._autostart_manager.apply(self._config)
 
+        self._cleanup_stale_temp_screenshots()
+
         PID_FILE.parent.mkdir(parents=True, exist_ok=True)
         PID_FILE.write_text(str(os.getpid()))
 
         self._tray_manager = TrayManager(
-            on_screenshot=self._on_tray_screenshot,
+            on_screenshot=self._on_screenshot_triggered,
             on_settings=self._on_settings,
             on_quit=self._on_quit,
             config=self._config,
@@ -60,10 +64,24 @@ class QuickPicApp:
             pass
         logger.info("Shutdown complete")
 
-    def _on_screenshot_triggered(self) -> None:
-        """Area selection → capture → clipboard. Runs on hotkey daemon thread."""
+    def _on_screenshot_triggered(self, *_args) -> None:
+        """Entry point for both hotkey and tray menu clicks.
+
+        Schedules the actual work on the GTK main thread and returns
+        immediately so the caller (pynput's daemon thread or the tray
+        menu's activate handler) is never blocked.
+        """
+        GLib.idle_add(self._do_screenshot)
+
+    def _do_screenshot(self) -> None:
+        """Runs on the GTK main thread. Owns the full select → crop → save → clipboard flow."""
         try:
-            selection = self._request_area_selection()
+            from quick_pic.area_selector import AreaSelector
+            selector = AreaSelector()
+            try:
+                selection = selector.run()
+            finally:
+                selector.destroy()
             if selection is None:
                 return
             path = ScreenshotCapture.capture_selection(
@@ -72,38 +90,21 @@ class QuickPicApp:
                 selection.rect,
                 selection.annotations,
             )
-            ClipboardManager.set_path_async(str(path))
+            ClipboardManager.set_path(str(path))
         except Exception:
             logger.exception("Screenshot capture failed")
             if self._tray_manager:
                 self._tray_manager.notify(t("notify.app_name"), t("notify.screenshot_failed"))
 
-    def _on_tray_screenshot(self, widget) -> None:
-        """GTK menu callback — spawn worker thread."""
-        t = threading.Thread(target=self._on_screenshot_triggered, daemon=True)
-        t.start()
-
-    def _request_area_selection(self):
-        """Show the area selector. Must run on GTK main thread."""
-        from quick_pic.area_selector import AreaSelector
-        from gi.repository import GLib
-        import queue
-
-        q: queue.Queue = queue.Queue()
-
-        def _run():
-            selector = AreaSelector()
-            result = selector.run()
-            selector.destroy()
-            q.put(result)
-
-        GLib.idle_add(_run)
-        # Since we might be called from GTK main thread (tray menu),
-        # handle both cases
+    def _cleanup_stale_temp_screenshots(self) -> None:
         try:
-            return q.get(timeout=60)
-        except queue.Empty:
-            return None
+            stale = [Path(p) for p in glob.glob("/tmp/tmp*.png")]
+            for path in stale:
+                path.unlink(missing_ok=True)
+            if stale:
+                logger.info(f"Cleaned up {len(stale)} stale screenshot temp files")
+        except Exception:
+            logger.warning("Failed to clean stale temp screenshots", exc_info=True)
 
     def _on_settings(self, widget) -> None:
         from quick_pic.settings_dialog import SettingsDialog
