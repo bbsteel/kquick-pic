@@ -2,6 +2,8 @@ import logging
 import time
 from pathlib import Path
 
+import cairo
+
 from quick_pic.i18n import t
 from quick_pic.annotations import SelectionResult, RectangleAnnotation, TextAnnotation, LineAnnotation, ArrowAnnotation
 
@@ -20,6 +22,7 @@ class AreaSelector:
     _SELECTION_HANDLE_SIZE = 8
     _MIN_SELECTION_SIZE = 24
     _MOTION_MIN_INTERVAL = 0.008  # 125Hz cap on drag motion processing
+    _rgba_available: bool = False
 
     def __init__(self):
         import gi
@@ -96,6 +99,24 @@ class AreaSelector:
         win.set_accept_focus(True)
         win.set_default_size(pixbuf.get_width(), pixbuf.get_height())
         win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
+
+        # The overlay relies on OPERATOR_CLEAR writing transparent pixels so the
+        # dim mask can be erased when the selection grows/moves. That only works
+        # on a real ARGB visual — on the default RGB visual CLEAR produces
+        # opaque black and the whole screen goes black after the first draw.
+        screen = win.get_screen()
+        rgba_visual = screen.get_rgba_visual()
+        composited = screen.is_composited()
+        if rgba_visual is not None and composited:
+            win.set_visual(rgba_visual)
+            win.set_app_paintable(True)
+            self._rgba_available = True
+        else:
+            logger.warning(
+                "No RGBA visual / no compositor: overlay will fall back to "
+                "redrawing the dim mask without clearing (ghosting may reappear)"
+            )
+            self._rgba_available = False
         self._window = win
 
         drawing = self._Gtk.DrawingArea()
@@ -115,6 +136,10 @@ class AreaSelector:
         container.put(background_image, 0, 0)
         container.put(drawing, 0, 0)
         drawing.set_app_paintable(True)
+        drawing.connect("button-press-event", self._on_button_press)
+        drawing.connect("button-release-event", self._on_button_release)
+        drawing.connect("motion-notify-event", self._on_motion)
+        drawing.connect("key-press-event", self._on_key_press)
         win.add(container)
 
         # --- CSS for toolbar styling ---
@@ -324,10 +349,6 @@ class AreaSelector:
         self._refresh_color_button()
         self._refresh_box_button()
 
-        drawing.connect("button-press-event", self._on_button_press)
-        drawing.connect("button-release-event", self._on_button_release)
-        drawing.connect("motion-notify-event", self._on_motion)
-        drawing.connect("key-press-event", self._on_key_press)
         win.connect("key-press-event", self._on_key_press)
         win.connect_after("button-press-event", self._on_window_button_press)
 
@@ -363,7 +384,33 @@ class AreaSelector:
     def destroy(self) -> None:
         pass
 
+    def _update_overlay_geometry(self) -> None:
+        """Schedule a redraw of the single overlay DrawingArea.
+
+        Kept as a thin wrapper around queue_draw() so callers don't need to
+        care which rendering strategy is in effect. (A previous attempt
+        split the overlay into 4 mask widgets + a border widget for
+        partial-redraw performance, but KWin in the target environment did
+        not actually alpha-blend child window ARGB surfaces, so the mask
+        widgets rendered as opaque black. We're back to a single
+        DrawingArea that repaints in full on every change.)
+        """
+        if self._drawing is not None:
+            self._drawing.queue_draw()
+
     def _on_draw_overlay(self, widget, cr):
+        # Single DrawingArea paints the entire overlay: dim mask outside
+        # the selection, the screenshot itself inside it, then border /
+        # handles / annotations. CLEAR the invalid region first so old
+        # mask pixels don't ghost when the selection grows or moves —
+        # requires the window to be on an ARGB visual, otherwise CLEAR
+        # writes opaque black and we degrade to redrawing without
+        # clearing (ghosting may reappear).
+        if self._rgba_available:
+            cr.set_operator(cairo.OPERATOR_CLEAR)
+            cr.paint()
+            cr.set_operator(cairo.OPERATOR_OVER)
+
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
 
@@ -372,7 +419,7 @@ class AreaSelector:
             active_rect = self._current_drag_rect()
 
         if active_rect is None:
-            # Semi-transparent dark mask over entire screen
+            # No selection yet: dim the whole screen.
             cr.set_source_rgba(0, 0, 0, 0.45)
             cr.rectangle(0, 0, w, h)
             cr.fill()
@@ -380,8 +427,19 @@ class AreaSelector:
 
         x, y, rw, rh = active_rect
 
-        # Draw dim mask only outside the selected region so the screenshot
-        # background remains fully visible inside the selection.
+        # Re-paint the screenshot inside the selection. With RGBA the CLEAR
+        # above erased both the mask AND the underlying image pixels in
+        # this region, so we have to put the image back for it to be
+        # visible. Without RGBA the image is still there from the initial
+        # paint, but this is cheap enough to do unconditionally.
+        if self._background_pixbuf is not None:
+            self._Gdk.cairo_set_source_pixbuf(
+                cr, self._background_pixbuf, 0, 0
+            )
+            cr.rectangle(x, y, rw, rh)
+            cr.fill()
+
+        # Dim mask in the four bands around the selection.
         cr.set_source_rgba(0, 0, 0, 0.45)
         cr.rectangle(0, 0, w, y)
         cr.fill()
@@ -446,7 +504,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
-            widget.queue_draw()
+            self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool == "box" and self._point_in_selection(event.x, event.y):
             self._dragging = True
             self._gesture_kind = "box"
@@ -454,7 +512,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
-            widget.queue_draw()
+            self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool == "text" and self._point_in_selection(event.x, event.y):
             self._dragging = True
             self._gesture_kind = "text"
@@ -462,7 +520,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
-            widget.queue_draw()
+            self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool in ("line", "arrow") and self._point_in_selection(event.x, event.y):
             self._dragging = True
             self._gesture_kind = self._active_tool
@@ -470,7 +528,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
-            widget.queue_draw()
+            self._update_overlay_geometry()
         elif event.button == 1 and self._selection_rect is not None and self._can_edit_selection():
             selection_handle = self._selection_hit_test(event.x, event.y)
             if selection_handle is not None:
@@ -507,7 +565,7 @@ class AreaSelector:
                 self._gesture_kind = None
                 self._selection_drag_origin = None
                 self._update_idle_cursor(event.x, event.y)
-                widget.queue_draw()
+                self._update_overlay_geometry()
                 return
 
             if self._gesture_kind in ("line", "arrow"):
@@ -517,7 +575,7 @@ class AreaSelector:
                     self._dragging = False
                     self._gesture_kind = None
                     self._update_idle_cursor(event.x, event.y)
-                    widget.queue_draw()
+                    self._update_overlay_geometry()
                     return
 
             if self._gesture_kind == "select":
@@ -564,7 +622,7 @@ class AreaSelector:
             self._dragging = False
             self._gesture_kind = None
             self._update_idle_cursor(event.x, event.y)
-            widget.queue_draw()
+            self._update_overlay_geometry()
 
     def _on_motion(self, widget, event):
         if not self._dragging:
