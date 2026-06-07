@@ -18,9 +18,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
+    "quick_pic",
     "CLAUDE.md",
-    "quick_pic/icons/*.png",
-    "quick_pic/locales/*.json",
     "scripts/*.sh",
 ]
 
