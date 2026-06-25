@@ -901,22 +901,25 @@ class AreaSelector:
             return
         if self._gesture_kind and self._gesture_kind.startswith("selection-"):
             for rect in (previous_rect, self._selection_rect):
-                self._queue_rect_border_redraw(rect)
+                self._queue_padded_rect_redraw(rect)
             return
         for rect in (
             previous_rect,
             self._drag_preview_screen_rect(self._current_drag_rect(), self._gesture_kind),
         ):
-            if rect is None:
-                continue
-            x, y, w, h = rect
-            padding = 24
-            self._drawing.queue_draw_area(
-                max(0, x - padding),
-                max(0, y - padding),
-                w + padding * 2,
-                h + padding * 2,
-            )
+            self._queue_padded_rect_redraw(rect)
+
+    def _queue_padded_rect_redraw(self, rect: tuple[int, int, int, int] | None) -> None:
+        if self._drawing is None or rect is None:
+            return
+        x, y, w, h = rect
+        padding = 24
+        self._drawing.queue_draw_area(
+            max(0, x - padding),
+            max(0, y - padding),
+            w + padding * 2,
+            h + padding * 2,
+        )
 
     def _queue_rect_border_redraw(self, rect: tuple[int, int, int, int] | None) -> None:
         # Invalidate only the 4 border strips so resize redraws don't touch the rect interior.

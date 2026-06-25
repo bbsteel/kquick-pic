@@ -19,7 +19,10 @@ mkdir -p "$OUT_DIR"
 tar \
   --exclude=".git" \
   --exclude=".venv" \
+  --exclude=".build-venv" \
   --exclude="dist" \
+  --exclude="build" \
+  --exclude=".pytest_cache" \
   --exclude="__pycache__" \
   --exclude="*.pyc" \
   -czf "$OUT_DIR/$ARCHIVE_NAME" \
