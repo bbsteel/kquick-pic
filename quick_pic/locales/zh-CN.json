@@ -28,6 +28,7 @@
     "selector.add_text": "添加文字",
     "selector.draw_line": "画线",
     "selector.draw_arrow": "画箭头",
+    "selector.number_stamp": "数字印章",
     "selector.choose_color": "选择颜色",
     "selector.confirm": "确认",
     "selector.cancel": "取消",

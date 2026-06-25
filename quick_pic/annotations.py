@@ -9,6 +9,7 @@ __all__ = [
     "TextAnnotation",
     "LineAnnotation",
     "ArrowAnnotation",
+    "NumberStampAnnotation",
 ]
 
 
@@ -16,7 +17,9 @@ __all__ = [
 class SelectionResult:
     rect: tuple[int, int, int, int]
     screenshot_path: Path
-    annotations: list["RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation"]
+    annotations: list[
+        "RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation | NumberStampAnnotation"
+    ]
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,13 @@ class ArrowAnnotation:
     color: tuple[int, int, int]       # (r, g, b) 0-255
 
 
+@dataclass(frozen=True)
+class NumberStampAnnotation:
+    center: tuple[int, int]           # (x, y) — selection-relative
+    number: int
+    color: tuple[int, int, int]       # (r, g, b) 0-255
+
+
 # ---- shared Cairo rendering ----
 
 _TEXT_FONT = "Sans 20"
@@ -53,6 +63,8 @@ _TEXT_PADDING_X = 8
 _TEXT_PADDING_Y = 6
 _ARROW_ANGLE = math.radians(22.5)
 _ARROW_LENGTH = 12
+_STAMP_FONT = "Sans Bold 17"
+_STAMP_RADIUS = 14
 
 # ---- 颜色辅助 ----
 
@@ -74,6 +86,8 @@ def render_annotations(cr, annotations, origin_x=0, origin_y=0) -> None:
             _draw_line_annotation(cr, annotation, origin_x, origin_y)
         elif isinstance(annotation, ArrowAnnotation):
             _draw_arrow_annotation(cr, annotation, origin_x, origin_y)
+        elif isinstance(annotation, NumberStampAnnotation):
+            _draw_number_stamp_annotation(cr, annotation, origin_x, origin_y)
 
 
 # ---- 拖拽预览 ----
@@ -146,6 +160,37 @@ def _draw_line_annotation(cr, annotation, origin_x, origin_y) -> None:
 def _draw_arrow_annotation(cr, annotation, origin_x, origin_y) -> None:
     _draw_line_annotation(cr, annotation, origin_x, origin_y)
     _draw_arrowhead(cr, annotation.end, annotation.start, annotation.color, origin_x, origin_y)
+
+
+def _draw_number_stamp_annotation(cr, annotation, origin_x, origin_y) -> None:
+    import gi
+    gi.require_version("Pango", "1.0")
+    gi.require_version("PangoCairo", "1.0")
+    from gi.repository import Pango, PangoCairo
+
+    cx = origin_x + annotation.center[0]
+    cy = origin_y + annotation.center[1]
+    radius = _STAMP_RADIUS
+
+    _set_source_color(cr, annotation.color)
+    cr.set_line_width(3)
+    cr.new_sub_path()
+    cr.arc(cx, cy, radius, 0, math.tau)
+    cr.stroke()
+
+    layout = PangoCairo.create_layout(cr)
+    layout.set_text(str(annotation.number), -1)
+    layout.set_font_description(Pango.FontDescription(_STAMP_FONT))
+    text_width, text_height = layout.get_pixel_size()
+    text_x = cx - text_width / 2
+    text_y = cy - text_height / 2
+
+    cr.set_source_rgba(0, 0, 0, 0.65)
+    cr.move_to(text_x + 1, text_y + 1)
+    PangoCairo.show_layout(cr, layout)
+    _set_source_color(cr, annotation.color)
+    cr.move_to(text_x, text_y)
+    PangoCairo.show_layout(cr, layout)
 
 
 def _draw_arrowhead(cr, tip, tail, color, origin_x, origin_y) -> None:

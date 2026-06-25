@@ -28,6 +28,7 @@
     "selector.add_text": "Add text",
     "selector.draw_line": "Draw line",
     "selector.draw_arrow": "Draw arrow",
+    "selector.number_stamp": "Number stamp",
     "selector.choose_color": "Choose color",
     "selector.confirm": "Confirm",
     "selector.cancel": "Cancel",

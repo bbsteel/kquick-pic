@@ -3,6 +3,7 @@ import pytest
 from quick_pic.annotations import (
     LineAnnotation,
     ArrowAnnotation,
+    NumberStampAnnotation,
     RectangleAnnotation,
     TextAnnotation,
     SelectionResult,
@@ -38,6 +39,19 @@ class TestArrowAnnotation:
             a.color = (1, 2, 3)
 
 
+class TestNumberStampAnnotation:
+    def test_create(self):
+        a = NumberStampAnnotation(center=(10, 20), number=3, color=(255, 0, 0))
+        assert a.center == (10, 20)
+        assert a.number == 3
+        assert a.color == (255, 0, 0)
+
+    def test_is_frozen(self):
+        a = NumberStampAnnotation(center=(0, 0), number=1, color=(0, 0, 0))
+        with pytest.raises(Exception):
+            a.number = 2
+
+
 class TestRenderAnnotations:
     def _make_surface(self, w=200, h=150):
         return cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
@@ -62,6 +76,30 @@ class TestRenderAnnotations:
         ann = ArrowAnnotation(start=(10, 10), end=(100, 60), color=(0, 255, 0))
         render_annotations(cr, [ann])
         surface.flush()
+
+    def test_render_number_stamp(self):
+        surface = self._make_surface()
+        cr = cairo.Context(surface)
+        ann = NumberStampAnnotation(center=(40, 40), number=1, color=(255, 0, 0))
+        render_annotations(cr, [ann])
+        surface.flush()
+
+    def test_render_number_stamp_does_not_connect_from_existing_path(self):
+        surface = self._make_surface()
+        cr = cairo.Context(surface)
+        cr.move_to(0, 0)
+        ann = NumberStampAnnotation(center=(100, 100), number=1, color=(255, 0, 0))
+
+        render_annotations(cr, [ann])
+        surface.flush()
+
+        data = surface.get_data()
+        stride = surface.get_stride()
+        # This point lies on the unwanted line Cairo draws from (0, 0) to
+        # the circle start if arc() is not isolated with new_sub_path().
+        pixel_offset = 53 * stride + 60 * 4
+        blue, green, red, alpha = data[pixel_offset : pixel_offset + 4]
+        assert (red, green, blue, alpha) == (0, 0, 0, 0)
 
     def test_render_with_origin_offset(self):
         surface = self._make_surface()
@@ -109,3 +147,12 @@ class TestSelectionResult:
             annotations=[arrow],
         )
         assert isinstance(result.annotations[0], ArrowAnnotation)
+
+    def test_number_stamp_in_annotations(self):
+        stamp = NumberStampAnnotation(center=(20, 20), number=1, color=(255, 0, 0))
+        result = SelectionResult(
+            rect=(0, 0, 100, 100),
+            screenshot_path="/tmp/test.png",
+            annotations=[stamp],
+        )
+        assert isinstance(result.annotations[0], NumberStampAnnotation)

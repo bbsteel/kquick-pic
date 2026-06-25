@@ -5,9 +5,107 @@ from pathlib import Path
 import cairo
 
 from quick_pic.i18n import t
-from quick_pic.annotations import SelectionResult, RectangleAnnotation, TextAnnotation, LineAnnotation, ArrowAnnotation
+from quick_pic.annotations import (
+    SelectionResult,
+    RectangleAnnotation,
+    TextAnnotation,
+    LineAnnotation,
+    ArrowAnnotation,
+    NumberStampAnnotation,
+)
 
 logger = logging.getLogger(__name__)
+
+TOOLBAR_CSS = b"""
+    .qp-toolbar-frame {
+        border-radius: 8px;
+        border: 1px solid rgba(25, 34, 44, 0.13);
+        box-shadow: 0 18px 42px rgba(16, 24, 40, 0.22);
+    }
+    .qp-toolbar {
+        background: rgba(255, 255, 255, 0.92);
+        padding: 7px;
+        border-radius: 8px;
+    }
+    .qp-toolgroup {
+        background: transparent;
+    }
+    .qp-tool-icon {
+        font-size: 17px;
+    }
+    .qp-tool-text {
+        font-size: 10px;
+        margin-top: 1px;
+    }
+    .qp-toolbutton {
+        border: none;
+        background-color: transparent;
+        background-image: none;
+        box-shadow: none;
+        text-shadow: none;
+        min-width: 48px;
+        min-height: 38px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        color: #202b36;
+    }
+    .qp-toolbutton:hover {
+        background-color: rgba(32, 43, 54, 0.06);
+        background-image: none;
+        box-shadow: none;
+    }
+    .qp-toolbutton:active, .qp-toolbutton:checked, .qp-toolbutton.active {
+        background-color: #e8f0ff;
+        background-image: none;
+        box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25);
+        color: #1d4ed8;
+    }
+    .qp-toolbutton label {
+        color: inherit;
+        text-shadow: none;
+    }
+    .qp-toolbutton.confirm {
+        background-color: #059669;
+        color: #ffffff;
+    }
+    .qp-toolbutton.confirm:hover {
+        background-color: #047857;
+    }
+    .qp-toolbutton.cancel {
+        background-color: rgba(239, 68, 68, 0.10);
+        color: #b42318;
+    }
+    .qp-toolbutton.cancel:hover {
+        background-color: rgba(239, 68, 68, 0.18);
+    }
+    .qp-palette-frame {
+        border-radius: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.10);
+    }
+    .qp-palette {
+        background: rgba(255, 255, 255, 0.92);
+        padding: 3px 2px;
+    }
+    .qp-colorbutton {
+        border: none;
+        background: transparent;
+        background-image: none;
+        box-shadow: none;
+        padding: 3px 5px;
+        border-radius: 4px;
+    }
+    .qp-colorbutton:hover {
+        background: rgba(0, 0, 0, 0.06);
+        background-image: none;
+        box-shadow: none;
+    }
+    .qp-separator {
+        background: rgba(25, 34, 44, 0.13);
+        min-width: 1px;
+        min-height: 32px;
+        margin: 0 4px;
+    }
+"""
 
 class AreaSelector:
     """GTK3 fullscreen overlay for selecting a screen region.
@@ -54,7 +152,9 @@ class AreaSelector:
         self._container = None
         self._selection_rect: tuple[int, int, int, int] | None = None
         self._gesture_kind: str | None = None
-        self._annotations: list[RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation] = []
+        self._annotations: list[
+            RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation | NumberStampAnnotation
+        ] = []
         self._active_tool: str | None = None
         self._toolbar = None
         self._toolbar_frame = None
@@ -70,6 +170,8 @@ class AreaSelector:
         self._line_button_label = None
         self._arrow_button = None
         self._arrow_button_label = None
+        self._number_button = None
+        self._number_button_label = None
         self._color_buttons: dict[str, object] = {}
         self._color_picker_button = None
         self._color_button_label = None
@@ -77,6 +179,7 @@ class AreaSelector:
         self._color_palette_frame = None
         self._pending_text_rect: tuple[int, int, int, int] | None = None
         self._selected_color_value = (255, 0, 0)
+        self._next_number_stamp_value = 1
         self._selection_drag_origin: tuple[int, int, int, int] | None = None
 
     def run(self) -> SelectionResult | None:
@@ -144,67 +247,18 @@ class AreaSelector:
 
         # --- CSS for toolbar styling ---
         css_provider = self._Gtk.CssProvider()
-        css_provider.load_from_data(b"""
-            .qp-toolbar-frame {
-                border-radius: 8px;
-                border: 1px solid rgba(0, 0, 0, 0.10);
-            }
-            .qp-toolbar {
-                background: rgba(255, 255, 255, 0.92);
-                padding: 4px 3px;
-            }
-            .qp-toolbutton {
-                border: none;
-                background: transparent;
-                padding: 4px 10px;
-                border-radius: 4px;
-                color: #333;
-            }
-            .qp-toolbutton:hover {
-                background: rgba(0, 0, 0, 0.06);
-            }
-            .qp-toolbutton:active, .qp-toolbutton.active {
-                background: rgba(0, 0, 0, 0.12);
-            }
-            .qp-toolbutton label {
-                color: #333;
-            }
-            .qp-tool-text {
-                font-size: 10px;
-                margin-top: 2px;
-            }
-            .qp-palette-frame {
-                border-radius: 6px;
-                border: 1px solid rgba(0, 0, 0, 0.10);
-            }
-            .qp-palette {
-                background: rgba(255, 255, 255, 0.92);
-                padding: 3px 2px;
-            }
-            .qp-colorbutton {
-                border: none;
-                background: transparent;
-                padding: 3px 5px;
-                border-radius: 4px;
-            }
-            .qp-colorbutton:hover {
-                background: rgba(0, 0, 0, 0.06);
-            }
-            .qp-separator {
-                color: rgba(0, 0, 0, 0.12);
-                font-size: 14px;
-                padding: 0 2px;
-                margin: 0 4px;
-            }
-        """)
-        style_context = win.get_style_context()
-        style_context.add_provider(css_provider, self._Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        css_provider.load_from_data(TOOLBAR_CSS)
+        self._Gtk.StyleContext.add_provider_for_screen(
+            win.get_screen(),
+            css_provider,
+            self._Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
 
         def _make_tool_button(icon_text, label_key, toggle=False):
             btn = (self._Gtk.ToggleButton if toggle else self._Gtk.Button)()
-            box = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=4)
+            box = self._Gtk.Box(orientation=self._Gtk.Orientation.VERTICAL, spacing=1)
             icon_label = self._Gtk.Label()
-            icon_label.set_markup(f'<span size="large">{icon_text}</span>')
+            icon_label.set_text(icon_text)
             icon_label.get_style_context().add_class("qp-tool-icon")
             text_label = self._Gtk.Label(label=t(label_key))
             text_label.get_style_context().add_class("qp-tool-text")
@@ -214,6 +268,16 @@ class AreaSelector:
             btn.set_tooltip_text(t(label_key))
             btn.get_style_context().add_class("qp-toolbutton")
             return btn, icon_label
+
+        def _make_tool_group():
+            group = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=3)
+            group.get_style_context().add_class("qp-toolgroup")
+            return group
+
+        def _make_separator():
+            separator = self._Gtk.Box(orientation=self._Gtk.Orientation.VERTICAL, spacing=0)
+            separator.get_style_context().add_class("qp-separator")
+            return separator
 
         # --- Toolbar ---
         toolbar_frame = self._Gtk.Frame()
@@ -227,15 +291,19 @@ class AreaSelector:
         text_button, text_button_label_ = _make_tool_button("T", "selector.add_text", toggle=True)
         line_button, line_button_label = _make_tool_button("╱", "selector.draw_line", toggle=True)
         arrow_button, arrow_button_label = _make_tool_button("→", "selector.draw_arrow", toggle=True)
+        number_button, number_button_label = _make_tool_button("①", "selector.number_stamp", toggle=True)
         color_picker_button, color_button_label = _make_tool_button("●", "selector.choose_color", toggle=False)
         undo_button, undo_button_label_ = _make_tool_button("↩", "selector.undo", toggle=False)
         confirm_button, confirm_button_label_ = _make_tool_button("✓", "selector.confirm", toggle=False)
         cancel_button, cancel_button_label_ = _make_tool_button("✕", "selector.cancel", toggle=False)
+        confirm_button.get_style_context().add_class("confirm")
+        cancel_button.get_style_context().add_class("cancel")
 
         box_button.connect("toggled", self._on_tool_toggled, "box")
         text_button.connect("toggled", self._on_tool_toggled, "text")
         line_button.connect("toggled", self._on_tool_toggled, "line")
         arrow_button.connect("toggled", self._on_tool_toggled, "arrow")
+        number_button.connect("toggled", self._on_tool_toggled, "number")
         color_picker_button.connect("clicked", self._toggle_color_palette)
         undo_button.connect("clicked", self._on_undo)
         confirm_button.connect("clicked", self._on_confirm)
@@ -253,21 +321,25 @@ class AreaSelector:
         text_button.connect("toggled", lambda b: _toggle_active_class(b))
         line_button.connect("toggled", lambda b: _toggle_active_class(b))
         arrow_button.connect("toggled", lambda b: _toggle_active_class(b))
+        number_button.connect("toggled", lambda b: _toggle_active_class(b))
 
-        toolbar.pack_start(box_button, False, False, 0)
-        toolbar.pack_start(text_button, False, False, 0)
-        toolbar.pack_start(line_button, False, False, 0)
-        toolbar.pack_start(arrow_button, False, False, 0)
-        toolbar.pack_start(color_picker_button, False, False, 0)
-        toolbar.pack_start(undo_button, False, False, 0)
-        # separator before confirm/cancel
-        sep_label = self._Gtk.Label()
-        sep_label.set_markup('<span size="large">|</span>')
-        sep_label.get_style_context().add_class("qp-separator")
-        sep_label.set_opacity(0.3)
-        toolbar.pack_start(sep_label, False, False, 0)
-        toolbar.pack_start(confirm_button, False, False, 0)
-        toolbar.pack_start(cancel_button, False, False, 0)
+        drawing_group = _make_tool_group()
+        for button in (box_button, text_button, line_button, arrow_button, number_button):
+            drawing_group.pack_start(button, False, False, 0)
+
+        action_group = _make_tool_group()
+        for button in (color_picker_button, undo_button):
+            action_group.pack_start(button, False, False, 0)
+
+        confirm_group = _make_tool_group()
+        for button in (confirm_button, cancel_button):
+            confirm_group.pack_start(button, False, False, 0)
+
+        toolbar.pack_start(drawing_group, False, False, 0)
+        toolbar.pack_start(_make_separator(), False, False, 0)
+        toolbar.pack_start(action_group, False, False, 0)
+        toolbar.pack_start(_make_separator(), False, False, 0)
+        toolbar.pack_start(confirm_group, False, False, 0)
 
         toolbar_frame.add(toolbar)
         container.put(toolbar_frame, 16, 16)
@@ -341,6 +413,8 @@ class AreaSelector:
         self._line_button_label = line_button_label
         self._arrow_button = arrow_button
         self._arrow_button_label = arrow_button_label
+        self._number_button = number_button
+        self._number_button_label = number_button_label
         self._color_picker_button = color_picker_button
         self._color_button_label = color_button_label
         self._undo_button = undo_button
@@ -529,6 +603,10 @@ class AreaSelector:
             self._end_x = event.x
             self._end_y = event.y
             self._update_overlay_geometry()
+        elif event.button == 1 and self._active_tool == "number":
+            if self._add_number_stamp_at(event.x, event.y):
+                self._update_idle_cursor(event.x, event.y)
+                return True
         elif event.button == 1 and self._selection_rect is not None and self._can_edit_selection():
             selection_handle = self._selection_hit_test(event.x, event.y)
             if selection_handle is not None:
@@ -682,6 +760,7 @@ class AreaSelector:
                 "text": self._text_button,
                 "line": self._line_button,
                 "arrow": self._arrow_button,
+                "number": self._number_button,
             }
             for name, btn in all_tool_buttons.items():
                 if name != tool_name and btn is not None and btn.get_active():
@@ -830,6 +909,23 @@ class AreaSelector:
             end=(int(x2 - sx), int(y2 - sy)),
             color=self._selected_color(),
         )
+
+    def _add_number_stamp_at(self, x_abs: float, y_abs: float) -> bool:
+        if self._selection_rect is None or not self._point_in_selection(x_abs, y_abs):
+            return False
+        sx, sy, _, _ = self._selection_rect
+        number = self._next_number_stamp_value
+        self._next_number_stamp_value += 1
+        self._annotations.append(
+            NumberStampAnnotation(
+                center=(int(x_abs - sx), int(y_abs - sy)),
+                number=number,
+                color=self._selected_color(),
+            )
+        )
+        if self._drawing is not None:
+            self._drawing.queue_draw()
+        return True
 
     def _normalized_text_rect_within_selection(
         self,
@@ -988,7 +1084,7 @@ class AreaSelector:
         self._set_window_cursor(cursor_name)
 
     def _update_idle_cursor(self, x: float, y: float) -> None:
-        if self._active_tool in ("box", "line", "arrow"):
+        if self._active_tool in ("box", "line", "arrow", "number"):
             self._set_window_cursor("crosshair")
             return
         if self._active_tool is not None or self._pending_text_rect is not None:
@@ -1033,7 +1129,7 @@ class AreaSelector:
 
     def _set_active_tool(self, tool_name: str | None) -> None:
         self._active_tool = tool_name
-        cursor_name = "crosshair" if tool_name in ("box", "line", "arrow") else None
+        cursor_name = "crosshair" if tool_name in ("box", "line", "arrow", "number") else None
         self._set_window_cursor(cursor_name)
 
     def _set_window_cursor(self, cursor_name: str | None) -> None:
