@@ -34,7 +34,7 @@ TOOLBAR_CSS = b"""
         font-size: 17px;
     }
     .qp-tool-text {
-        font-size: 10px;
+        font-size: 13px;
         margin-top: 1px;
     }
     .qp-toolbutton {
@@ -44,8 +44,8 @@ TOOLBAR_CSS = b"""
         box-shadow: none;
         text-shadow: none;
         min-width: 48px;
-        min-height: 38px;
-        padding: 3px 8px;
+        min-height: 52px;
+        padding: 4px 8px;
         border-radius: 6px;
         color: #202b36;
     }
@@ -67,6 +67,8 @@ TOOLBAR_CSS = b"""
     .qp-toolbutton.confirm {
         background-color: #059669;
         color: #ffffff;
+        padding: 4px 8px;
+        min-height: 52px;
     }
     .qp-toolbutton.confirm:hover {
         background-color: #047857;
@@ -74,6 +76,8 @@ TOOLBAR_CSS = b"""
     .qp-toolbutton.cancel {
         background-color: rgba(239, 68, 68, 0.10);
         color: #b42318;
+        padding: 4px 8px;
+        min-height: 52px;
     }
     .qp-toolbutton.cancel:hover {
         background-color: rgba(239, 68, 68, 0.18);
@@ -266,6 +270,7 @@ class AreaSelector:
             box.pack_start(text_label, False, False, 0)
             btn.add(box)
             btn.set_tooltip_text(t(label_key))
+            btn.get_style_context().add_class("flat")
             btn.get_style_context().add_class("qp-toolbutton")
             return btn, icon_label
 
