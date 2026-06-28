@@ -5,6 +5,7 @@ from pathlib import Path
 
 from gi.repository import GLib
 
+from quick_pic.timing import log_duration, log_event, now
 from quick_pic.autostart import AutoStartManager
 from quick_pic.clipboard import ClipboardManager
 from quick_pic.config import AppConfig, ConfigManager
@@ -28,6 +29,7 @@ class QuickPicApp:
         self._tray_manager: TrayManager | None = None
 
     def run(self) -> None:
+        started_at = now()
         self._config = self._config_manager.load()
         set_language(self._config.language)
         self._autostart_manager.apply(self._config)
@@ -50,6 +52,15 @@ class QuickPicApp:
         )
         self._hotkey_manager.start()
 
+        log_duration(
+            logger,
+            "app_started",
+            started_at,
+            pid=os.getpid(),
+            hotkey=self._config.hotkey,
+            save_path=self._config.resolved_save_path(),
+            format=self._config.format,
+        )
         self._tray_manager.start()
 
     def shutdown(self) -> None:
@@ -71,10 +82,16 @@ class QuickPicApp:
         immediately so the caller (pynput's daemon thread or the tray
         menu's activate handler) is never blocked.
         """
-        GLib.idle_add(self._do_screenshot)
+        source = "tray" if _args else "hotkey"
+        triggered_at = now()
+        log_event(logger, "screenshot_triggered", source=source)
+        GLib.idle_add(self._do_screenshot, triggered_at, source)
 
-    def _do_screenshot(self) -> None:
+    def _do_screenshot(self, triggered_at: float | None = None, source: str = "unknown") -> bool:
         """Runs on the GTK main thread. Owns the full select → crop → save → clipboard flow."""
+        flow_started_at = now()
+        if triggered_at is not None:
+            log_duration(logger, "screenshot_idle_started", triggered_at, source=source)
         try:
             from quick_pic.area_selector import AreaSelector
             selector = AreaSelector()
@@ -83,18 +100,31 @@ class QuickPicApp:
             finally:
                 selector.destroy()
             if selection is None:
-                return
+                log_duration(logger, "screenshot_cancelled", flow_started_at, source=source)
+                return False
+            log_event(
+                logger,
+                "screenshot_selection_ready",
+                rect=selection.rect,
+                annotations=len(selection.annotations),
+            )
+            save_started_at = now()
             path = ScreenshotCapture.capture_selection(
                 self._config,
                 selection.screenshot_path,
                 selection.rect,
                 selection.annotations,
             )
+            log_duration(logger, "screenshot_saved_to_disk", save_started_at, path=path)
+            clipboard_started_at = now()
             ClipboardManager.set_path(str(path))
+            log_duration(logger, "screenshot_copied_to_clipboard", clipboard_started_at, path=path)
+            log_duration(logger, "screenshot_flow_finished", flow_started_at, source=source, path=path)
         except Exception:
             logger.exception("Screenshot capture failed")
             if self._tray_manager:
                 self._tray_manager.notify(t("notify.app_name"), t("notify.screenshot_failed"))
+        return False
 
     def _cleanup_stale_temp_screenshots(self) -> None:
         try:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cairo
 
+from quick_pic.timing import log_debug_duration, log_debug_event, log_duration, log_event, now
 from quick_pic.i18n import t
 from quick_pic.annotations import (
     SelectionResult,
@@ -185,21 +186,42 @@ class AreaSelector:
         self._selected_color_value = (255, 0, 0)
         self._next_number_stamp_value = 1
         self._selection_drag_origin: tuple[int, int, int, int] | None = None
+        self._run_started_at = 0.0
+        self._first_draw_logged = False
+        self._draw_count = 0
+        self._motion_flush_count = 0
 
     def run(self) -> SelectionResult | None:
         import tempfile
         import mss
 
+        self._run_started_at = now()
+        self._first_draw_logged = False
+        self._draw_count = 0
+        self._motion_flush_count = 0
+        log_event(logger, "selector_started")
+
         # Take full screenshot for background
+        capture_started_at = now()
         screenshot_path = Path(tempfile.mktemp(suffix=".png"))
         self._screenshot_path = screenshot_path
         with mss.mss() as sct:
             sct.shot(output=str(screenshot_path), mon=0)
+        log_duration(logger, "selector_background_captured", capture_started_at, path=screenshot_path)
 
+        pixbuf_started_at = now()
         pixbuf = self._GdkPixbuf.Pixbuf.new_from_file(str(screenshot_path))
         self._background_pixbuf = pixbuf
+        log_duration(
+            logger,
+            "selector_background_loaded",
+            pixbuf_started_at,
+            width=pixbuf.get_width(),
+            height=pixbuf.get_height(),
+        )
 
         # Build window
+        window_started_at = now()
         win = self._Gtk.Window(type=self._Gtk.WindowType.TOPLEVEL)
         win.set_decorated(False)
         win.set_keep_above(True)
@@ -437,11 +459,22 @@ class AreaSelector:
         color_palette_frame.hide()
         text_editor.hide()
         drawing.grab_focus()
+        log_duration(
+            logger,
+            "selector_overlay_shown",
+            window_started_at,
+            width=pixbuf.get_width(),
+            height=pixbuf.get_height(),
+            rgba=self._rgba_available,
+            composited=composited,
+        )
 
         self._Gtk.main()
+        log_duration(logger, "selector_gtk_main_exited", self._run_started_at)
 
         # Ensure the overlay is fully removed from screen before caller
         # (e.g. mss) captures the framebuffer again.
+        cleanup_started_at = now()
         win.hide()
         import gi
         gi.require_version("Gtk", "3.0")
@@ -450,10 +483,20 @@ class AreaSelector:
             _Gtk.main_iteration()
         _Gdk.flush()
         win.destroy()
+        log_duration(logger, "selector_overlay_destroyed", cleanup_started_at)
         if self._result is None:
             screenshot_path.unlink(missing_ok=True)
             self._screenshot_path = None
+            log_duration(logger, "selector_finished", self._run_started_at, result="cancelled")
             return None
+        log_duration(
+            logger,
+            "selector_finished",
+            self._run_started_at,
+            result="selected",
+            rect=self._result,
+            annotations=len(self._annotations),
+        )
         return SelectionResult(
             rect=self._result,
             screenshot_path=screenshot_path,
@@ -478,6 +521,12 @@ class AreaSelector:
             self._drawing.queue_draw()
 
     def _on_draw_overlay(self, widget, cr):
+        draw_started_at = now()
+        self._draw_count += 1
+        if not self._first_draw_logged and self._run_started_at:
+            self._first_draw_logged = True
+            log_duration(logger, "selector_first_draw", self._run_started_at)
+
         # Single DrawingArea paints the entire overlay: dim mask outside
         # the selection, the screenshot itself inside it, then border /
         # handles / annotations. CLEAR the invalid region first so old
@@ -502,6 +551,16 @@ class AreaSelector:
             cr.set_source_rgba(0, 0, 0, 0.45)
             cr.rectangle(0, 0, w, h)
             cr.fill()
+            log_debug_duration(
+                logger,
+                "selector_draw_overlay",
+                draw_started_at,
+                count=self._draw_count,
+                gesture=self._gesture_kind,
+                dragging=self._dragging,
+                selection=None,
+                annotations=len(self._annotations),
+            )
             return
 
         x, y, rw, rh = active_rect
@@ -566,6 +625,17 @@ class AreaSelector:
             from quick_pic.annotations import draw_arrow_preview
             draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
+        log_debug_duration(
+            logger,
+            "selector_draw_overlay",
+            draw_started_at,
+            count=self._draw_count,
+            gesture=self._gesture_kind,
+            dragging=self._dragging,
+            selection=self._selection_rect,
+            annotations=len(self._annotations),
+        )
+
     def _on_button_press(self, widget, event):
         if (
             event.button == 1
@@ -583,6 +653,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
+            log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
             self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool == "box" and self._point_in_selection(event.x, event.y):
             self._dragging = True
@@ -591,6 +662,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
+            log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
             self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool == "text" and self._point_in_selection(event.x, event.y):
             self._dragging = True
@@ -599,6 +671,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
+            log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
             self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool in ("line", "arrow") and self._point_in_selection(event.x, event.y):
             self._dragging = True
@@ -607,6 +680,7 @@ class AreaSelector:
             self._start_y = event.y
             self._end_x = event.x
             self._end_y = event.y
+            log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
             self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool == "number":
             if self._add_number_stamp_at(event.x, event.y):
@@ -623,6 +697,14 @@ class AreaSelector:
                 self._end_x = event.x
                 self._end_y = event.y
                 self._apply_selection_cursor(selection_handle)
+                log_debug_event(
+                    logger,
+                    "selector_drag_started",
+                    gesture=self._gesture_kind,
+                    x=int(event.x),
+                    y=int(event.y),
+                    origin=self._selection_drag_origin,
+                )
                 return True
         elif event.button == 3:
             self._result = None
@@ -664,6 +746,7 @@ class AreaSelector:
             if self._gesture_kind == "select":
                 self._selection_rect = (x, y, w, h)
                 self._result = self._selection_rect
+                log_event(logger, "selector_selection_created", rect=self._selection_rect)
                 if self._toolbar_frame:
                     self._toolbar_frame.show_all()
                     self._position_toolbar()
@@ -711,6 +794,14 @@ class AreaSelector:
         if not self._dragging:
             self._update_idle_cursor(event.x, event.y)
             return
+        log_debug_event(
+            logger,
+            "selector_motion_received",
+            gesture=self._gesture_kind,
+            x=int(event.x),
+            y=int(event.y),
+            pending=self._motion_pending,
+        )
         self._motion_pending_event = (event.x, event.y)
         if self._motion_pending:
             return
@@ -729,6 +820,7 @@ class AreaSelector:
         return False
 
     def _flush_motion(self):
+        flush_started_at = now()
         if self._motion_pending_event is None or not self._dragging:
             return
         x, y = self._motion_pending_event
@@ -742,6 +834,18 @@ class AreaSelector:
         if self._gesture_kind and self._gesture_kind.startswith("selection-"):
             self._update_selection_drag()
         self._queue_drag_redraw(previous_rect)
+        self._motion_flush_count += 1
+        log_debug_duration(
+            logger,
+            "selector_motion_flushed",
+            flush_started_at,
+            count=self._motion_flush_count,
+            gesture=self._gesture_kind,
+            x=int(x),
+            y=int(y),
+            selection=self._selection_rect,
+            previous_rect=previous_rect,
+        )
 
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
@@ -781,10 +885,12 @@ class AreaSelector:
             return
         self._commit_text_entry()
         self._result = self._selection_rect
+        log_event(logger, "selector_confirmed", rect=self._selection_rect, annotations=len(self._annotations))
         self._Gtk.main_quit()
 
     def _on_cancel(self, button) -> None:
         self._result = None
+        log_event(logger, "selector_cancelled", reason="toolbar")
         self._Gtk.main_quit()
 
     def _on_undo(self, button) -> None:

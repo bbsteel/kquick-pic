@@ -1,6 +1,7 @@
 import signal
 import sys
 import logging
+import os
 
 if getattr(sys, 'frozen', False):
     import os as _os
@@ -19,10 +20,13 @@ from quick_pic.app import QuickPicApp
 
 
 def main():
+    level_name = os.environ.get("QUICK_PIC_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
     logging.basicConfig(
-        level=logging.INFO,
+        level=level,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
+    logging.info(f"Logging initialized at {logging.getLevelName(level)}")
 
     app = QuickPicApp()
 

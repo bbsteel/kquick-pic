@@ -2,6 +2,8 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
+from quick_pic.timing import log_debug_event, log_duration, log_event, now
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,14 +28,38 @@ class ScreenshotCapture:
     ) -> Path:
         from PIL import Image
 
+        started_at = now()
         x, y, w, h = rect
+        log_event(
+            logger,
+            "capture_selection_started",
+            source=screenshot_path,
+            rect=rect,
+            annotations=len(annotations or []),
+        )
         try:
             with Image.open(screenshot_path) as image:
                 crop_box = (x, y, x + w, y + h)
+                log_debug_event(
+                    logger,
+                    "capture_selection_crop_box",
+                    source_size=image.size,
+                    crop_box=crop_box,
+                    format=image.format,
+                )
                 cropped = image.crop(crop_box)
                 if annotations:
+                    annotation_started_at = now()
                     ScreenshotCapture._apply_annotations(cropped, annotations)
-                return ScreenshotCapture._save_image(config, cropped)
+                    log_duration(
+                        logger,
+                        "capture_annotations_applied",
+                        annotation_started_at,
+                        annotations=len(annotations),
+                    )
+                path = ScreenshotCapture._save_image(config, cropped)
+                log_duration(logger, "capture_selection_finished", started_at, path=path)
+                return path
         finally:
             screenshot_path.unlink(missing_ok=True)
 
@@ -51,12 +77,21 @@ class ScreenshotCapture:
 
     @staticmethod
     def _save_image(config, image) -> Path:
+        started_at = now()
         filepath = ScreenshotCapture._next_output_path(config)
         format_name = "JPEG" if config.format == "jpg" else "PNG"
         save_image = image.convert("RGB") if format_name == "JPEG" else image
         save_image.save(filepath, format=format_name)
         resolved = filepath.resolve()
-        logger.info(f"Screenshot saved: {resolved}")
+        log_duration(
+            logger,
+            "image_saved",
+            started_at,
+            path=resolved,
+            format=format_name,
+            width=image.width,
+            height=image.height,
+        )
         return resolved
 
     @staticmethod
