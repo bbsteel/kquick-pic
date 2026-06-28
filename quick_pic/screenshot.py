@@ -109,7 +109,7 @@ class ScreenshotCapture:
         render_annotations(cr, annotations, origin_x=0, origin_y=0)
 
         surface.flush()
-        rendered = Image.frombuffer("RGBA", (width, height), bytes(raw), "raw", "BGRA", 0, 1)
+        rendered = Image.frombuffer("RGBA", (width, height), raw, "raw", "BGRA", 0, 1)
         image.paste(rendered)
 
     @staticmethod
