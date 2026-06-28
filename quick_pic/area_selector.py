@@ -192,8 +192,10 @@ class AreaSelector:
         self._motion_flush_count = 0
 
     def run(self) -> SelectionResult | None:
+        import os
         import tempfile
         import mss
+        from PIL import Image
 
         self._run_started_at = now()
         self._first_draw_logged = False
@@ -201,16 +203,32 @@ class AreaSelector:
         self._motion_flush_count = 0
         log_event(logger, "selector_started")
 
-        # Take full screenshot for background
+        # Take full screenshot for background.
+        # grab() keeps pixels in memory; we build the Pixbuf directly from
+        # those bytes (no disk read-back) and write an uncompressed PNG only
+        # for the later crop step.
         capture_started_at = now()
-        screenshot_path = Path(tempfile.mktemp(suffix=".png"))
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        screenshot_path = Path(tmp)
         self._screenshot_path = screenshot_path
         with mss.mss() as sct:
-            sct.shot(output=str(screenshot_path), mon=0)
+            raw = sct.grab(sct.monitors[0])
+            img = Image.frombytes("RGB", raw.size, raw.rgb)
+        img.save(screenshot_path, format="PNG", compress_level=0)
         log_duration(logger, "selector_background_captured", capture_started_at, path=screenshot_path)
 
         pixbuf_started_at = now()
-        pixbuf = self._GdkPixbuf.Pixbuf.new_from_file(str(screenshot_path))
+        img_bytes = self._GLib.Bytes.new(img.tobytes())
+        pixbuf = self._GdkPixbuf.Pixbuf.new_from_bytes(
+            img_bytes,
+            self._GdkPixbuf.Colorspace.RGB,
+            False,
+            8,
+            img.width,
+            img.height,
+            img.width * 3,
+        )
         self._background_pixbuf = pixbuf
         log_duration(
             logger,
