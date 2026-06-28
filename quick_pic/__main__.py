@@ -26,6 +26,7 @@ def main():
         level=level,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
+    print(f"quick-pic started (PID {os.getpid()})", flush=True)
     logging.info(f"Logging initialized at {logging.getLevelName(level)}")
 
     app = QuickPicApp()
