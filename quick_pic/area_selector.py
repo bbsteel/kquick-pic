@@ -185,6 +185,7 @@ class AreaSelector:
         self._selected_color_value = (255, 0, 0)
         self._next_number_stamp_value = 1
         self._selection_drag_origin: tuple[int, int, int, int] | None = None
+        self._reselecting = False
         self._run_started_at = 0.0
         self._first_draw_logged = False
         self._draw_count = 0
@@ -583,9 +584,7 @@ class AreaSelector:
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
 
-        active_rect = self._selection_rect
-        if active_rect is None and self._dragging and self._gesture_kind == "select":
-            active_rect = self._current_drag_rect()
+        active_rect = self._active_selection_rect_for_draw()
 
         if active_rect is None:
             # No selection yet: dim the whole screen.
@@ -688,14 +687,16 @@ class AreaSelector:
             self._on_confirm(None)
             return True
         if event.button == 1 and self._selection_rect is None:
-            self._dragging = True
-            self._gesture_kind = "select"
-            self._start_x = event.x
-            self._start_y = event.y
-            self._end_x = event.x
-            self._end_y = event.y
-            log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
-            self._update_overlay_geometry()
+            self._begin_selection_drag(event, reselecting=False)
+            return True
+        elif (
+            event.button == 1
+            and self._selection_rect is not None
+            and self._pending_text_rect is None
+            and not self._point_in_selection(event.x, event.y)
+        ):
+            self._begin_selection_drag(event, reselecting=True)
+            return True
         elif event.button == 1 and self._active_tool == "box" and self._point_in_selection(event.x, event.y):
             self._dragging = True
             self._gesture_kind = "box"
@@ -770,6 +771,7 @@ class AreaSelector:
                 self._dragging = False
                 self._gesture_kind = None
                 self._selection_drag_origin = None
+                self._reselecting = False
                 self._update_idle_cursor(event.x, event.y)
                 self._update_overlay_geometry()
                 return
@@ -785,6 +787,9 @@ class AreaSelector:
                     return
 
             if self._gesture_kind == "select":
+                if self._reselecting:
+                    self._annotations.clear()
+                    self._next_number_stamp_value = 1
                 self._selection_rect = (x, y, w, h)
                 self._result = self._selection_rect
                 log_event(logger, "selector_selection_created", rect=self._selection_rect)
@@ -828,6 +833,7 @@ class AreaSelector:
 
             self._dragging = False
             self._gesture_kind = None
+            self._reselecting = False
             self._update_idle_cursor(event.x, event.y)
             self._update_overlay_geometry()
 
@@ -947,6 +953,41 @@ class AreaSelector:
         if self._color_palette_frame is not None:
             self._color_palette_frame.hide()
 
+    def _begin_selection_drag(self, event, *, reselecting: bool) -> None:
+        if reselecting:
+            self._hide_selection_controls()
+        self._dragging = True
+        self._reselecting = reselecting
+        self._gesture_kind = "select"
+        self._selection_drag_origin = None
+        self._start_x = event.x
+        self._start_y = event.y
+        self._end_x = event.x
+        self._end_y = event.y
+        log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
+        self._update_overlay_geometry()
+
+    def _hide_selection_controls(self) -> None:
+        if self._toolbar_frame is not None:
+            self._toolbar_frame.hide()
+        if self._color_palette_frame is not None:
+            self._color_palette_frame.hide()
+        self._hide_text_editor()
+        self._clear_active_tool_buttons()
+        self._set_active_tool(None)
+
+    def _clear_active_tool_buttons(self) -> None:
+        for attr_name in (
+            "_box_button",
+            "_text_button",
+            "_line_button",
+            "_arrow_button",
+            "_number_button",
+        ):
+            button = getattr(self, attr_name, None)
+            if button is not None and button.get_active():
+                button.set_active(False)
+
     def _current_drag_rect(self) -> tuple[int, int, int, int]:
         return (
             int(min(self._start_x, self._end_x)),
@@ -954,6 +995,11 @@ class AreaSelector:
             int(abs(self._end_x - self._start_x)),
             int(abs(self._end_y - self._start_y)),
         )
+
+    def _active_selection_rect_for_draw(self) -> tuple[int, int, int, int] | None:
+        if self._dragging and self._gesture_kind == "select":
+            return self._current_drag_rect()
+        return self._selection_rect
 
     def _point_in_selection(self, x: float, y: float) -> bool:
         if self._selection_rect is None:
