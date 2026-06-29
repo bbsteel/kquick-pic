@@ -217,13 +217,6 @@ class TrayManager:
 
         self._menu = self._Gtk.Menu()
 
-        item_pid = self._Gtk.MenuItem(label=f"PID: {os.getpid()}")
-        item_pid.set_sensitive(False)
-        self._menu.append(item_pid)
-
-        sep_top = self._Gtk.SeparatorMenuItem()
-        self._menu.append(sep_top)
-
         item_screenshot = self._Gtk.MenuItem(label=t("tray.take_screenshot"))
         item_screenshot.connect("activate", self._on_screenshot)
         self._menu.append(item_screenshot)
@@ -234,6 +227,10 @@ class TrayManager:
 
         sep = self._Gtk.SeparatorMenuItem()
         self._menu.append(sep)
+
+        item_pid = self._Gtk.MenuItem(label=f"PID: {os.getpid()}")
+        item_pid.set_sensitive(False)
+        self._menu.append(item_pid)
 
         item_quit = self._Gtk.MenuItem(label=t("tray.quit"))
         item_quit.connect("activate", self._on_quit_wrapper)
@@ -494,12 +491,12 @@ def _create_sni(
                     ),
                     dbus.Array(
                         [
-                            _item(5, {"label": dbus.String(f"PID: {os.getpid()}"), "enabled": dbus.Boolean(False)}),
-                            _item(6, {"type": dbus.String("separator")}),
                             _item(1, {"label": dbus.String(t("tray.take_screenshot"))}),
                             _item(2, {"label": dbus.String(t("tray.settings"))}),
                             _item(3, {"type": dbus.String("separator")}),
-                            _item(4, {"label": dbus.String(t("tray.quit"))}),
+                            _item(4, {"label": dbus.String(f"PID: {os.getpid()}"), "enabled": dbus.Boolean(False)}),
+                            _item(5, {"type": dbus.String("separator")}),
+                            _item(6, {"label": dbus.String(t("tray.quit"))}),
                         ],
                         signature="v",
                     ),
