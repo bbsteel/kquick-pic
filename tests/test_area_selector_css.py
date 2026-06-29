@@ -15,6 +15,8 @@ def test_toolbar_uses_option_a_grouped_icon_style():
     assert ".qp-toolgroup" in css
     assert "min-width: 48px;" in css
     assert "min-height: 52px;" in css
+    assert "min-width: 24px;" in css
+    assert "min-height: 24px;" in css
     assert ".qp-toolbutton.confirm" in css
     assert ".qp-toolbutton.cancel" in css
 

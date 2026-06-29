@@ -14,6 +14,7 @@ from quick_pic.annotations import (
     ArrowAnnotation,
     NumberStampAnnotation,
 )
+from quick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ TOOLBAR_CSS = b"""
         background: transparent;
     }
     .qp-tool-icon {
-        font-size: 17px;
+        min-width: 24px;
+        min-height: 24px;
     }
     .qp-tool-text {
         font-size: 13px;
@@ -169,17 +171,14 @@ class AreaSelector:
         self._text_editor = None
         self._text_editor_box = None
         self._box_button = None
-        self._box_button_label = None
+        self._box_button_icon = None
         self._text_button = None
         self._line_button = None
-        self._line_button_label = None
         self._arrow_button = None
-        self._arrow_button_label = None
         self._number_button = None
-        self._number_button_label = None
         self._color_buttons: dict[str, object] = {}
         self._color_picker_button = None
-        self._color_button_label = None
+        self._color_button_icon = None
         self._color_palette = None
         self._color_palette_frame = None
         self._pending_text_rect: tuple[int, int, int, int] | None = None
@@ -298,21 +297,43 @@ class AreaSelector:
             self._Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
 
-        def _make_tool_button(icon_text, label_key, toggle=False):
+        def _make_tool_button(icon_name, label_key, toggle=False, color_provider=None):
             btn = (self._Gtk.ToggleButton if toggle else self._Gtk.Button)()
             box = self._Gtk.Box(orientation=self._Gtk.Orientation.VERTICAL, spacing=1)
-            icon_label = self._Gtk.Label()
-            icon_label.set_text(icon_text)
-            icon_label.get_style_context().add_class("qp-tool-icon")
+            box.set_valign(self._Gtk.Align.CENTER)
+            icon_widget = self._Gtk.DrawingArea()
+            icon_widget.set_size_request(TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SIZE)
+            icon_widget.set_valign(self._Gtk.Align.CENTER)
+            icon_widget.set_halign(self._Gtk.Align.CENTER)
+            icon_widget.get_style_context().add_class("qp-tool-icon")
+
+            def _draw_icon(widget, cr):
+                if color_provider is not None:
+                    icon_color = color_provider()
+                else:
+                    rgba = btn.get_style_context().get_color(btn.get_state_flags())
+                    icon_color = (
+                        int(rgba.red * 255),
+                        int(rgba.green * 255),
+                        int(rgba.blue * 255),
+                    )
+                draw_toolbar_icon(cr, icon_name, icon_color, TOOLBAR_ICON_SIZE)
+                return False
+
+            icon_widget.connect("draw", _draw_icon)
+            btn.connect("state-flags-changed", lambda *_args: icon_widget.queue_draw())
+            icon_wrapper = self._Gtk.Box()
+            icon_wrapper.set_size_request(-1, 26)
+            icon_wrapper.pack_start(icon_widget, True, True, 0)
             text_label = self._Gtk.Label(label=t(label_key))
             text_label.get_style_context().add_class("qp-tool-text")
-            box.pack_start(icon_label, False, False, 0)
+            box.pack_start(icon_wrapper, False, False, 0)
             box.pack_start(text_label, False, False, 0)
             btn.add(box)
             btn.set_tooltip_text(t(label_key))
             btn.get_style_context().add_class("flat")
             btn.get_style_context().add_class("qp-toolbutton")
-            return btn, icon_label
+            return btn, icon_widget
 
         def _make_tool_group():
             group = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=3)
@@ -332,15 +353,19 @@ class AreaSelector:
         toolbar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=1)
         toolbar.get_style_context().add_class("qp-toolbar")
 
-        box_button, box_button_label = _make_tool_button("□", "selector.draw_box", toggle=True)
-        text_button, text_button_label_ = _make_tool_button("T", "selector.add_text", toggle=True)
-        line_button, line_button_label = _make_tool_button("╱", "selector.draw_line", toggle=True)
-        arrow_button, arrow_button_label = _make_tool_button("→", "selector.draw_arrow", toggle=True)
-        number_button, number_button_label = _make_tool_button("①", "selector.number_stamp", toggle=True)
-        color_picker_button, color_button_label = _make_tool_button("●", "selector.choose_color", toggle=False)
-        undo_button, undo_button_label_ = _make_tool_button("↩", "selector.undo", toggle=False)
-        confirm_button, confirm_button_label_ = _make_tool_button("✓", "selector.confirm", toggle=False)
-        cancel_button, cancel_button_label_ = _make_tool_button("✕", "selector.cancel", toggle=False)
+        box_button, box_button_icon = _make_tool_button(
+            "box", "selector.draw_box", toggle=True, color_provider=self._selected_color
+        )
+        text_button, text_button_icon = _make_tool_button("text", "selector.add_text", toggle=True)
+        line_button, line_button_icon = _make_tool_button("line", "selector.draw_line", toggle=True)
+        arrow_button, arrow_button_icon = _make_tool_button("arrow", "selector.draw_arrow", toggle=True)
+        number_button, number_button_icon = _make_tool_button("number", "selector.number_stamp", toggle=True)
+        color_picker_button, color_button_icon = _make_tool_button(
+            "color", "selector.choose_color", toggle=False, color_provider=self._selected_color
+        )
+        undo_button, undo_button_icon = _make_tool_button("undo", "selector.undo", toggle=False)
+        confirm_button, confirm_button_icon = _make_tool_button("confirm", "selector.confirm", toggle=False)
+        cancel_button, cancel_button_icon = _make_tool_button("cancel", "selector.cancel", toggle=False)
         confirm_button.get_style_context().add_class("confirm")
         cancel_button.get_style_context().add_class("cancel")
 
@@ -354,19 +379,20 @@ class AreaSelector:
         confirm_button.connect("clicked", self._on_confirm)
         cancel_button.connect("clicked", self._on_cancel)
 
-        def _toggle_active_class(button):
+        def _toggle_active_class(button, icon_widget):
             if isinstance(button, self._Gtk.ToggleButton):
                 ctx = button.get_style_context()
                 if button.get_active():
                     ctx.add_class("active")
                 else:
                     ctx.remove_class("active")
+                icon_widget.queue_draw()
 
-        box_button.connect("toggled", lambda b: _toggle_active_class(b))
-        text_button.connect("toggled", lambda b: _toggle_active_class(b))
-        line_button.connect("toggled", lambda b: _toggle_active_class(b))
-        arrow_button.connect("toggled", lambda b: _toggle_active_class(b))
-        number_button.connect("toggled", lambda b: _toggle_active_class(b))
+        box_button.connect("toggled", lambda b: _toggle_active_class(b, box_button_icon))
+        text_button.connect("toggled", lambda b: _toggle_active_class(b, text_button_icon))
+        line_button.connect("toggled", lambda b: _toggle_active_class(b, line_button_icon))
+        arrow_button.connect("toggled", lambda b: _toggle_active_class(b, arrow_button_icon))
+        number_button.connect("toggled", lambda b: _toggle_active_class(b, number_button_icon))
 
         drawing_group = _make_tool_group()
         for button in (box_button, text_button, line_button, arrow_button, number_button):
@@ -452,16 +478,13 @@ class AreaSelector:
         self._text_editor = text_editor
         self._text_editor_box = text_editor_frame
         self._box_button = box_button
-        self._box_button_label = box_button_label
+        self._box_button_icon = box_button_icon
         self._text_button = text_button
         self._line_button = line_button
-        self._line_button_label = line_button_label
         self._arrow_button = arrow_button
-        self._arrow_button_label = arrow_button_label
         self._number_button = number_button
-        self._number_button_label = number_button_label
         self._color_picker_button = color_picker_button
-        self._color_button_label = color_button_label
+        self._color_button_icon = color_button_icon
         self._undo_button = undo_button
         self._color_palette = color_palette
         self._color_palette_frame = color_palette_frame
@@ -1338,20 +1361,14 @@ class AreaSelector:
         self._container.move(self._color_palette_frame, x, y)
 
     def _refresh_color_button(self) -> None:
-        if self._color_button_label is None:
+        if self._color_button_icon is None:
             return
-        red, green, blue = self._selected_color_value
-        self._color_button_label.set_markup(
-            f'<span foreground="#{red:02x}{green:02x}{blue:02x}" size="large">●</span>'
-        )
+        self._color_button_icon.queue_draw()
 
     def _refresh_box_button(self) -> None:
-        if self._box_button_label is None:
+        if self._box_button_icon is None:
             return
-        red, green, blue = self._selected_color_value
-        self._box_button_label.set_markup(
-            f'<span foreground="#{red:02x}{green:02x}{blue:02x}" size="x-large">□</span>'
-        )
+        self._box_button_icon.queue_draw()
 
     def _finish_text_entry(self) -> None:
         self._hide_text_editor()
