@@ -194,6 +194,15 @@ class AreaSelector:
         self._background_image_widget = None
         self._in_run = False
 
+    def prepare(self) -> None:
+        """Build the overlay window ahead of the first run().
+
+        Called at app startup so the first trigger pays no widget-construction
+        cost. The window is not mapped here — it stays hidden until run().
+        """
+        if self._window is None:
+            self._setup_window()
+
     def run(self) -> SelectionResult | None:
         import os
         import tempfile
@@ -212,7 +221,16 @@ class AreaSelector:
         # mss path which is faster (~150 ms vs ~650 ms for the portal round-trip).
         capture_started_at = now()
         if os.environ.get("WAYLAND_DISPLAY"):
-            screenshot_path, pixbuf = self._capture_background_wayland(capture_started_at)
+            try:
+                screenshot_path, pixbuf = self._capture_background_kwin(capture_started_at)
+            except Exception:
+                logger.warning(
+                    "KWin ScreenShot2 capture failed, falling back to XDG portal "
+                    "(expect launch-feedback bounce; check that quick-pic.desktop "
+                    "declares X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2)",
+                    exc_info=True,
+                )
+                screenshot_path, pixbuf = self._capture_background_wayland(capture_started_at)
         else:
             fd, tmp = tempfile.mkstemp(suffix=".png")
             os.close(fd)
@@ -245,9 +263,10 @@ class AreaSelector:
         self._screenshot_path = screenshot_path
         self._background_pixbuf = pixbuf
 
-        # Build the GTK window once on the first invocation; reuse it on
-        # subsequent ones so KDE does not treat each show() as a new window
-        # launch and skip the startup-feedback bouncing icon.
+        # Build the GTK window once on the first invocation (usually already
+        # done by the startup pre-warm) and reuse it: rebuilding all widgets
+        # per capture is pointless work, and as a POPUP window the map itself
+        # is free of KWin side effects.
         if self._window is None:
             self._setup_window()
 
@@ -277,17 +296,38 @@ class AreaSelector:
 
         window_started_at = now()
         win = self._window
-        # Restore full opacity and X11 input region (no map event — the window
-        # stays mapped at all times, so KWin never runs a window-open animation).
-        win.set_opacity(1.0)
+        # Map the override-redirect window for this capture. Unmanaged
+        # windows must size/position themselves — there is no WM fullscreen.
+        win.move(0, 0)
+        win.resize(pixbuf.get_width(), pixbuf.get_height())
+        win.show_all()
+        # show_all() un-hides the toolbar/palette/text editor; hide them again.
+        self._hide_selection_controls()
+        self._drawing.grab_focus()
+        # Override-redirect windows never receive keyboard focus from the WM,
+        # so grab the seat (XWayland forwards the keyboard grab to KWin via
+        # the xwayland-keyboard-grab protocol). Same-connection ordering
+        # guarantees the window is viewable by the time the grab is processed.
         gdkwin = win.get_window()
         if gdkwin is not None:
-            w, h = pixbuf.get_width(), pixbuf.get_height()
-            gdkwin.input_shape_combine_region(
-                cairo.Region(cairo.RectangleInt(0, 0, w, h)), 0, 0
+            seat = self._Gdk.Display.get_default().get_default_seat()
+            status = seat.grab(
+                gdkwin,
+                self._Gdk.SeatCapabilities.ALL,
+                True,  # owner_events: deliver events to our widgets normally
+                None,
+                None,
+                None,
+                None,
             )
-        # Controls are already hidden by _hide_selection_controls() above.
-        self._drawing.grab_focus()
+            if status != self._Gdk.GrabStatus.SUCCESS:
+                logger.warning(f"Seat grab failed: {status} (Esc may not work)")
+            # Override-redirect windows never get X input focus from the WM.
+            # The grab already routes key events here, but without a FocusIn
+            # GTK keeps has-toplevel-focus false, so the input-method context
+            # (fcitx) never activates and text annotation cannot be typed
+            # into. Set X input focus on the window explicitly.
+            gdkwin.focus(self._Gdk.CURRENT_TIME)
         log_duration(
             logger,
             "selector_overlay_shown",
@@ -305,20 +345,24 @@ class AreaSelector:
             self._in_run = False
         log_duration(logger, "selector_gtk_main_exited", self._run_started_at)
 
-        # Return to invisible state: opacity 0 + empty X11 input region.
-        # The window stays mapped so there is no MapNotify on the next trigger
-        # and KWin never runs a window-open animation.
+        # Release the seat grab and unmap the window. Unmapping an unmanaged
+        # POPUP has no KWin side effects, and leaving no fullscreen window
+        # mapped between captures avoids compositor-state issues across
+        # screen-off/wake cycles. Process pending events + flush so the
+        # overlay is really gone before the next capture reads the screen.
         cleanup_started_at = now()
-        win.set_opacity(0.0)
-        gdkwin = win.get_window()
-        if gdkwin is not None:
-            gdkwin.input_shape_combine_region(cairo.Region(), 0, 0)
+        self._Gdk.Display.get_default().get_default_seat().ungrab()
+        win.hide()
         import gi
         gi.require_version("Gtk", "3.0")
         from gi.repository import Gtk as _Gtk, Gdk as _Gdk
         while _Gtk.events_pending():
             _Gtk.main_iteration()
         _Gdk.flush()
+        # Release the full-screen background while idle — the persistent
+        # window would otherwise pin tens of MB of pixbuf between captures.
+        self._background_image_widget.clear()
+        self._background_pixbuf = None
         log_duration(logger, "selector_overlay_hidden", cleanup_started_at)
 
         if self._result is None:
@@ -326,6 +370,7 @@ class AreaSelector:
             self._screenshot_path = None
             log_duration(logger, "selector_finished", self._run_started_at, result="cancelled")
             return None
+        self._screenshot_path = None
         log_duration(
             logger,
             "selector_finished",
@@ -341,11 +386,15 @@ class AreaSelector:
         )
 
     def _setup_window(self) -> None:
-        """Build the GTK overlay window and all child widgets (called once)."""
-        win = self._Gtk.Window(type=self._Gtk.WindowType.TOPLEVEL)
-        win.set_decorated(False)
-        win.set_keep_above(True)
-        win.set_accept_focus(True)
+        """Build the GTK overlay window and all child widgets (called once).
+
+        The window is a POPUP (X11 override-redirect): KWin does not manage
+        it, so mapping it triggers neither a window-open animation nor the
+        launch-feedback bouncing cursor, and it never appears in the taskbar.
+        The window stays unmapped between captures — run() maps it per
+        invocation and hides it again on exit.
+        """
+        win = self._Gtk.Window(type=self._Gtk.WindowType.POPUP)
         win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
 
         # The overlay relies on OPERATOR_CLEAR writing transparent pixels so the
@@ -595,21 +644,99 @@ class AreaSelector:
         win.connect("key-press-event", self._on_key_press)
         win.connect_after("button-press-event", self._on_window_button_press)
 
-        # Pre-map the window at opacity 0 so all future show/hide cycles are
-        # opacity changes, not X11 map/unmap events.  KWin runs its window-open
-        # animation only on MapNotify; opacity changes are composited silently.
-        win.set_opacity(0.0)
-        win.fullscreen()
-        win.show_all()
-        # Controls were hidden above; show_all() un-hides them, so hide again.
-        self._toolbar_frame.hide()
-        self._color_palette_frame.hide()
-        self._text_editor.hide()
-        # Clear the X11 input region so mouse/keyboard events fall through to
-        # whatever is behind the invisible fullscreen window.
-        gdkwin = win.get_window()
-        if gdkwin is not None:
-            gdkwin.input_shape_combine_region(cairo.Region(), 0, 0)
+    def _capture_background_kwin(
+        self, capture_started_at: float
+    ) -> tuple[Path, object]:
+        """Capture full screen via KWin's org.kde.KWin.ScreenShot2 (Wayland).
+
+        Preferred over the XDG portal: KWin captures in-process (~120 ms vs
+        ~850 ms), spawns no helper — so Plasma shows no launch-feedback
+        bouncing cursor and no focus is stolen from the foreground app (the
+        portal helper's focus steal made apps repaint text selections as
+        unselected right before the frame was taken).
+
+        Requires the app's installed .desktop file to declare
+        X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2 with an
+        Exec whose first argument canonicalizes to this process's
+        /proc/self/exe (KWin matches callers that way).
+        """
+        import dbus
+        import os
+        import tempfile
+        from PIL import Image
+
+        bus = dbus.SessionBus()
+        obj = bus.get_object("org.kde.KWin", "/org/kde/KWin/ScreenShot2")
+        iface = dbus.Interface(obj, "org.kde.KWin.ScreenShot2")
+
+        rfd, wfd = os.pipe()
+        try:
+            options = dbus.Dictionary(
+                {
+                    "include-cursor": dbus.Boolean(False),
+                    "native-resolution": dbus.Boolean(True),
+                },
+                signature="sv",
+            )
+            results = iface.CaptureWorkspace(options, dbus.types.UnixFd(wfd))
+        finally:
+            os.close(wfd)
+
+        try:
+            data = bytearray()
+            while True:
+                chunk = os.read(rfd, 1 << 22)
+                if not chunk:
+                    break
+                data.extend(chunk)
+        finally:
+            os.close(rfd)
+
+        width = int(results["width"])
+        height = int(results["height"])
+        stride = int(results["stride"])
+        image_format = int(results.get("format", 0))
+        # "format" is a QImage::Format enum: 4=RGB32, 5=ARGB32,
+        # 6=ARGB32_Premultiplied — all little-endian B,G,R,{X|A} in memory.
+        # Screenshot alpha is opaque, so premultiplied == straight here.
+        if image_format not in (4, 5, 6):
+            raise RuntimeError(f"Unsupported KWin image format: {image_format}")
+        if len(data) < stride * height:
+            raise RuntimeError(
+                f"Short read from KWin: {len(data)} < {stride * height}"
+            )
+        img = Image.frombuffer(
+            "RGBA", (width, height), bytes(data), "raw", "BGRA", stride, 1
+        ).convert("RGB")
+
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        screenshot_path = Path(tmp)
+        img.save(screenshot_path, format="PNG", compress_level=0)
+        log_duration(
+            logger, "selector_background_captured", capture_started_at,
+            path=screenshot_path, backend="kwin",
+        )
+
+        pixbuf_started_at = now()
+        img_bytes = self._GLib.Bytes.new(img.tobytes())
+        pixbuf = self._GdkPixbuf.Pixbuf.new_from_bytes(
+            img_bytes,
+            self._GdkPixbuf.Colorspace.RGB,
+            False,
+            8,
+            img.width,
+            img.height,
+            img.width * 3,
+        )
+        log_duration(
+            logger,
+            "selector_background_loaded",
+            pixbuf_started_at,
+            width=pixbuf.get_width(),
+            height=pixbuf.get_height(),
+        )
+        return screenshot_path, pixbuf
 
     def _capture_background_wayland(
         self, capture_started_at: float
@@ -623,6 +750,7 @@ class AreaSelector:
         import os
         import shutil
         import tempfile
+        from urllib.parse import unquote, urlsplit
 
         bus = dbus.SessionBus()
         portal_obj = bus.get_object(
@@ -645,7 +773,7 @@ class AreaSelector:
                 portal_uri.append(str(results.get("uri", "")))
             loop.quit()
 
-        bus.add_signal_receiver(
+        signal_match = bus.add_signal_receiver(
             _on_portal_response,
             "Response",
             "org.freedesktop.portal.Request",
@@ -658,14 +786,32 @@ class AreaSelector:
             },
             signature="sv",
         )
-        iface.Screenshot("", options)
-        self._GLib.timeout_add(5000, loop.quit)
-        loop.run()
+        timeout_id = None
+
+        def _on_timeout():
+            nonlocal timeout_id
+            timeout_id = None
+            loop.quit()
+            return False
+
+        try:
+            iface.Screenshot("", options)
+            timeout_id = self._GLib.timeout_add(5000, _on_timeout)
+            loop.run()
+        finally:
+            # Remove the receiver every time: the handle path is identical on
+            # each invocation, so leaked receivers would fire again on later
+            # responses and pile up one D-Bus match per screenshot.
+            signal_match.remove()
+            if timeout_id is not None:
+                self._GLib.source_remove(timeout_id)
 
         if not portal_uri:
             raise RuntimeError("XDG portal screenshot failed or timed out")
 
-        portal_path = portal_uri[0].replace("file://", "")
+        # The portal returns a file:// URI with percent-encoding — e.g. a
+        # zh_CN Pictures dir (~/图片) arrives as %E5%9B%BE%E7%89%87.
+        portal_path = unquote(urlsplit(portal_uri[0]).path)
         fd, tmp = tempfile.mkstemp(suffix=".png")
         os.close(fd)
         screenshot_path = Path(tmp)

@@ -38,22 +38,33 @@ uv sync --frozen
 mkdir -p "$APP_DIR" "$ICON_DIR"
 cp "$DEFAULT_ICON" "$ICON_FILE"
 
+# Exec must launch through the venv's python3 symlink: KWin authorizes
+# org.kde.KWin.ScreenShot2 callers by matching the caller's /proc/<pid>/exe
+# against the canonical path of the desktop file's Exec first argument, then
+# reading X-KDE-DBUS-Restricted-Interfaces from that desktop file. The
+# quick-pic console script would not match (its canonical path is itself,
+# while the process exe is the python interpreter).
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Type=Application
 Version=1.0
 Name=Quick Pic
 Comment=Quick screenshot tool
-Exec=$VENV_DIR/bin/quick-pic
+Exec=$VENV_DIR/bin/python3 -m quick_pic
 Path=$ROOT_DIR
 Icon=quick-pic
 Terminal=false
 Categories=Utility;Graphics;
 StartupNotify=false
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 EOF
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
+fi
+
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+  kbuildsycoca6 >/dev/null 2>&1 || true
 fi
 
 echo "Installed Quick Pic launcher at $DESKTOP_FILE"

@@ -28,6 +28,7 @@ class QuickPicApp:
         self._hotkey_manager: HotkeyManager | None = None
         self._tray_manager: TrayManager | None = None
         self._area_selector = None
+        self._screenshot_in_progress = False
 
     def run(self) -> None:
         started_at = now()
@@ -62,7 +63,21 @@ class QuickPicApp:
             save_path=self._config.resolved_save_path(),
             format=self._config.format,
         )
+        # Pre-build the overlay widgets so the first trigger pays no
+        # construction cost. The window itself stays unmapped until a capture.
+        GLib.idle_add(self._prepare_area_selector)
         self._tray_manager.start()
+
+    def _prepare_area_selector(self) -> bool:
+        try:
+            from quick_pic.area_selector import AreaSelector
+            if self._area_selector is None:
+                self._area_selector = AreaSelector()
+            self._area_selector.prepare()
+            log_event(logger, "selector_prewarmed")
+        except Exception:
+            logger.warning("Failed to pre-warm area selector", exc_info=True)
+        return False
 
     def shutdown(self) -> None:
         logger.info("Shutting down...")
@@ -96,6 +111,13 @@ class QuickPicApp:
         flow_started_at = now()
         if triggered_at is not None:
             log_duration(logger, "screenshot_idle_started", triggered_at, source=source)
+        # run() blocks in a nested Gtk.main, which still dispatches idle
+        # callbacks — a second trigger would re-enter run() and corrupt the
+        # in-progress selection, so drop it here.
+        if self._screenshot_in_progress:
+            log_event(logger, "screenshot_ignored_busy", source=source)
+            return False
+        self._screenshot_in_progress = True
         try:
             from quick_pic.area_selector import AreaSelector
             if self._area_selector is None:
@@ -116,12 +138,15 @@ class QuickPicApp:
                 annotations=len(selection.annotations),
             )
             save_started_at = now()
-            path = ScreenshotCapture.capture_selection(
-                self._config,
-                selection.screenshot_path,
-                selection.rect,
-                selection.annotations,
-            )
+            try:
+                path = ScreenshotCapture.capture_selection(
+                    self._config,
+                    selection.screenshot_path,
+                    selection.rect,
+                    selection.annotations,
+                )
+            finally:
+                selection.screenshot_path.unlink(missing_ok=True)
             log_duration(logger, "screenshot_saved_to_disk", save_started_at, path=path)
             clipboard_started_at = now()
             ClipboardManager.set_path(str(path))
@@ -131,6 +156,8 @@ class QuickPicApp:
             logger.exception("Screenshot capture failed")
             if self._tray_manager:
                 self._tray_manager.notify(t("notify.app_name"), t("notify.screenshot_failed"))
+        finally:
+            self._screenshot_in_progress = False
         return False
 
     def _cleanup_stale_temp_screenshots(self) -> None:
