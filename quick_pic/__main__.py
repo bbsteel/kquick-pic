@@ -1,7 +1,16 @@
+import os
+
+# On Wayland, force X11 backend so GTK uses XWayland.
+# Reasons: (1) mss uses X11 XGetImage and can't capture Wayland content —
+# we handle screenshotting via the XDG portal instead; (2) XWayland delivers
+# pointer-motion events in the X11 style that our 125 Hz drag throttle assumes,
+# avoiding the frame-pacing lag seen with GTK's native Wayland backend.
+if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("GDK_BACKEND"):
+    os.environ["GDK_BACKEND"] = "x11"
+
 import signal
 import sys
 import logging
-import os
 
 if getattr(sys, 'frozen', False):
     import os as _os

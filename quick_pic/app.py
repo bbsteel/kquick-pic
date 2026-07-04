@@ -27,6 +27,7 @@ class QuickPicApp:
         self._config: AppConfig | None = None
         self._hotkey_manager: HotkeyManager | None = None
         self._tray_manager: TrayManager | None = None
+        self._area_selector = None
 
     def run(self) -> None:
         started_at = now()
@@ -69,6 +70,9 @@ class QuickPicApp:
             self._hotkey_manager.stop()
         if self._tray_manager:
             self._tray_manager.stop()
+        if self._area_selector is not None:
+            self._area_selector.destroy()
+            self._area_selector = None
         try:
             PID_FILE.unlink(missing_ok=True)
         except OSError:
@@ -94,11 +98,14 @@ class QuickPicApp:
             log_duration(logger, "screenshot_idle_started", triggered_at, source=source)
         try:
             from quick_pic.area_selector import AreaSelector
-            selector = AreaSelector()
+            if self._area_selector is None:
+                self._area_selector = AreaSelector()
             try:
-                selection = selector.run()
-            finally:
-                selector.destroy()
+                selection = self._area_selector.run()
+            except Exception:
+                self._area_selector.destroy()
+                self._area_selector = None
+                raise
             if selection is None:
                 log_duration(logger, "screenshot_cancelled", flow_started_at, source=source)
                 return False

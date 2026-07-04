@@ -190,6 +190,9 @@ class AreaSelector:
         self._first_draw_logged = False
         self._draw_count = 0
         self._motion_flush_count = 0
+        self._composited = False
+        self._background_image_widget = None
+        self._in_run = False
 
     def run(self) -> SelectionResult | None:
         import os
@@ -203,48 +206,146 @@ class AreaSelector:
         self._motion_flush_count = 0
         log_event(logger, "selector_started")
 
-        # Take full screenshot for background.
-        # grab() keeps pixels in memory; we build the Pixbuf directly from
-        # those bytes (no disk read-back) and write an uncompressed PNG only
-        # for the later crop step.
+        # Capture screenshot first (before touching the GTK window).
+        # On Wayland, mss (X11 XGetImage) cannot read the compositor framebuffer,
+        # so we use the XDG Desktop Portal instead.  On X11 we keep the original
+        # mss path which is faster (~150 ms vs ~650 ms for the portal round-trip).
         capture_started_at = now()
-        fd, tmp = tempfile.mkstemp(suffix=".png")
-        os.close(fd)
-        screenshot_path = Path(tmp)
-        self._screenshot_path = screenshot_path
-        with mss.mss() as sct:
-            raw = sct.grab(sct.monitors[0])
-            img = Image.frombytes("RGB", raw.size, raw.rgb)
-        img.save(screenshot_path, format="PNG", compress_level=0)
-        log_duration(logger, "selector_background_captured", capture_started_at, path=screenshot_path)
+        if os.environ.get("WAYLAND_DISPLAY"):
+            screenshot_path, pixbuf = self._capture_background_wayland(capture_started_at)
+        else:
+            fd, tmp = tempfile.mkstemp(suffix=".png")
+            os.close(fd)
+            screenshot_path = Path(tmp)
+            with mss.mss() as sct:
+                raw = sct.grab(sct.monitors[0])
+                img = Image.frombytes("RGB", raw.size, raw.rgb)
+            img.save(screenshot_path, format="PNG", compress_level=0)
+            log_duration(logger, "selector_background_captured", capture_started_at, path=screenshot_path)
 
-        pixbuf_started_at = now()
-        img_bytes = self._GLib.Bytes.new(img.tobytes())
-        pixbuf = self._GdkPixbuf.Pixbuf.new_from_bytes(
-            img_bytes,
-            self._GdkPixbuf.Colorspace.RGB,
-            False,
-            8,
-            img.width,
-            img.height,
-            img.width * 3,
-        )
+            pixbuf_started_at = now()
+            img_bytes = self._GLib.Bytes.new(img.tobytes())
+            pixbuf = self._GdkPixbuf.Pixbuf.new_from_bytes(
+                img_bytes,
+                self._GdkPixbuf.Colorspace.RGB,
+                False,
+                8,
+                img.width,
+                img.height,
+                img.width * 3,
+            )
+            log_duration(
+                logger,
+                "selector_background_loaded",
+                pixbuf_started_at,
+                width=pixbuf.get_width(),
+                height=pixbuf.get_height(),
+            )
+
+        self._screenshot_path = screenshot_path
         self._background_pixbuf = pixbuf
+
+        # Build the GTK window once on the first invocation; reuse it on
+        # subsequent ones so KDE does not treat each show() as a new window
+        # launch and skip the startup-feedback bouncing icon.
+        if self._window is None:
+            self._setup_window()
+
+        # Update the background image and drawing canvas for this capture.
+        self._background_image_widget.set_from_pixbuf(pixbuf)
+        self._drawing.set_size_request(pixbuf.get_width(), pixbuf.get_height())
+
+        # Reset all per-invocation state.
+        self._result = None
+        self._start_x = self._start_y = self._end_x = self._end_y = 0.0
+        self._dragging = False
+        self._motion_pending = False
+        self._motion_pending_event = None
+        self._last_motion_time = 0.0
+        self._selection_rect = None
+        self._gesture_kind = None
+        self._annotations = []
+        self._active_tool = None
+        self._pending_text_rect = None
+        self._selected_color_value = (255, 0, 0)
+        self._next_number_stamp_value = 1
+        self._selection_drag_origin = None
+        self._reselecting = False
+
+        # Hide any controls left visible from a previous invocation.
+        self._hide_selection_controls()
+
+        window_started_at = now()
+        win = self._window
+        # Restore full opacity and X11 input region (no map event — the window
+        # stays mapped at all times, so KWin never runs a window-open animation).
+        win.set_opacity(1.0)
+        gdkwin = win.get_window()
+        if gdkwin is not None:
+            w, h = pixbuf.get_width(), pixbuf.get_height()
+            gdkwin.input_shape_combine_region(
+                cairo.Region(cairo.RectangleInt(0, 0, w, h)), 0, 0
+            )
+        # Controls are already hidden by _hide_selection_controls() above.
+        self._drawing.grab_focus()
         log_duration(
             logger,
-            "selector_background_loaded",
-            pixbuf_started_at,
+            "selector_overlay_shown",
+            window_started_at,
             width=pixbuf.get_width(),
             height=pixbuf.get_height(),
+            rgba=self._rgba_available,
+            composited=self._composited,
         )
 
-        # Build window
-        window_started_at = now()
+        self._in_run = True
+        try:
+            self._Gtk.main()
+        finally:
+            self._in_run = False
+        log_duration(logger, "selector_gtk_main_exited", self._run_started_at)
+
+        # Return to invisible state: opacity 0 + empty X11 input region.
+        # The window stays mapped so there is no MapNotify on the next trigger
+        # and KWin never runs a window-open animation.
+        cleanup_started_at = now()
+        win.set_opacity(0.0)
+        gdkwin = win.get_window()
+        if gdkwin is not None:
+            gdkwin.input_shape_combine_region(cairo.Region(), 0, 0)
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk as _Gtk, Gdk as _Gdk
+        while _Gtk.events_pending():
+            _Gtk.main_iteration()
+        _Gdk.flush()
+        log_duration(logger, "selector_overlay_hidden", cleanup_started_at)
+
+        if self._result is None:
+            screenshot_path.unlink(missing_ok=True)
+            self._screenshot_path = None
+            log_duration(logger, "selector_finished", self._run_started_at, result="cancelled")
+            return None
+        log_duration(
+            logger,
+            "selector_finished",
+            self._run_started_at,
+            result="selected",
+            rect=self._result,
+            annotations=len(self._annotations),
+        )
+        return SelectionResult(
+            rect=self._result,
+            screenshot_path=screenshot_path,
+            annotations=list(self._annotations),
+        )
+
+    def _setup_window(self) -> None:
+        """Build the GTK overlay window and all child widgets (called once)."""
         win = self._Gtk.Window(type=self._Gtk.WindowType.TOPLEVEL)
         win.set_decorated(False)
         win.set_keep_above(True)
         win.set_accept_focus(True)
-        win.set_default_size(pixbuf.get_width(), pixbuf.get_height())
         win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
 
         # The overlay relies on OPERATOR_CLEAR writing transparent pixels so the
@@ -254,6 +355,7 @@ class AreaSelector:
         screen = win.get_screen()
         rgba_visual = screen.get_rgba_visual()
         composited = screen.is_composited()
+        self._composited = composited
         if rgba_visual is not None and composited:
             win.set_visual(rgba_visual)
             win.set_app_paintable(True)
@@ -269,7 +371,7 @@ class AreaSelector:
         drawing = self._Gtk.DrawingArea()
         self._drawing = drawing
         drawing.set_can_focus(True)
-        drawing.set_size_request(pixbuf.get_width(), pixbuf.get_height())
+        drawing.set_size_request(1920, 1080)  # placeholder; updated in run() before each show
         drawing.connect("draw", self._on_draw_overlay)
         drawing.add_events(
             self._Gdk.EventMask.BUTTON_PRESS_MASK
@@ -277,7 +379,8 @@ class AreaSelector:
             | self._Gdk.EventMask.POINTER_MOTION_MASK
             | self._Gdk.EventMask.KEY_PRESS_MASK
         )
-        background_image = self._Gtk.Image.new_from_pixbuf(pixbuf)
+        background_image = self._Gtk.Image()  # pixbuf set in run() before each show
+        self._background_image_widget = background_image
         container = self._Gtk.Fixed()
         self._container = container
         container.put(background_image, 0, 0)
@@ -289,7 +392,6 @@ class AreaSelector:
         drawing.connect("key-press-event", self._on_key_press)
         win.add(container)
 
-        # --- CSS for toolbar styling ---
         css_provider = self._Gtk.CssProvider()
         css_provider.load_from_data(TOOLBAR_CSS)
         self._Gtk.StyleContext.add_provider_for_screen(
@@ -346,7 +448,6 @@ class AreaSelector:
             separator.get_style_context().add_class("qp-separator")
             return separator
 
-        # --- Toolbar ---
         toolbar_frame = self._Gtk.Frame()
         toolbar_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
         toolbar_frame.get_style_context().add_class("qp-toolbar-frame")
@@ -417,7 +518,6 @@ class AreaSelector:
         container.put(toolbar_frame, 16, 16)
         toolbar_frame.hide()
 
-        # --- Color palette ---
         color_palette_frame = self._Gtk.Frame()
         color_palette_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
         color_palette_frame.get_style_context().add_class("qp-palette-frame")
@@ -495,58 +595,101 @@ class AreaSelector:
         win.connect("key-press-event", self._on_key_press)
         win.connect_after("button-press-event", self._on_window_button_press)
 
+        # Pre-map the window at opacity 0 so all future show/hide cycles are
+        # opacity changes, not X11 map/unmap events.  KWin runs its window-open
+        # animation only on MapNotify; opacity changes are composited silently.
+        win.set_opacity(0.0)
         win.fullscreen()
         win.show_all()
-        toolbar_frame.hide()
-        color_palette_frame.hide()
-        text_editor.hide()
-        drawing.grab_focus()
+        # Controls were hidden above; show_all() un-hides them, so hide again.
+        self._toolbar_frame.hide()
+        self._color_palette_frame.hide()
+        self._text_editor.hide()
+        # Clear the X11 input region so mouse/keyboard events fall through to
+        # whatever is behind the invisible fullscreen window.
+        gdkwin = win.get_window()
+        if gdkwin is not None:
+            gdkwin.input_shape_combine_region(cairo.Region(), 0, 0)
+
+    def _capture_background_wayland(
+        self, capture_started_at: float
+    ) -> tuple[Path, object]:
+        """Capture full screen via XDG Desktop Portal (Wayland path).
+
+        Returns (screenshot_path, pixbuf).  The portal saves a PNG to
+        ~/Pictures; we move it to a temp file so the caller owns cleanup.
+        """
+        import dbus
+        import os
+        import shutil
+        import tempfile
+
+        bus = dbus.SessionBus()
+        portal_obj = bus.get_object(
+            "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+        )
+        iface = dbus.Interface(portal_obj, "org.freedesktop.portal.Screenshot")
+
+        token = "qp_cap"
+        sender_part = bus.get_unique_name().lstrip(":").replace(".", "_")
+        handle_path = (
+            f"/org/freedesktop/portal/desktop/request/{sender_part}/{token}"
+        )
+
+        loop = self._GLib.MainLoop()
+        portal_uri: list[str] = []
+
+        def _on_portal_response(response, results):
+            if int(response) == 0:
+                portal_uri.append(str(results.get("uri", "")))
+            loop.quit()
+
+        bus.add_signal_receiver(
+            _on_portal_response,
+            "Response",
+            "org.freedesktop.portal.Request",
+            path=handle_path,
+        )
+        options = dbus.Dictionary(
+            {
+                "handle_token": dbus.String(token),
+                "interactive": dbus.Boolean(False),
+            },
+            signature="sv",
+        )
+        iface.Screenshot("", options)
+        self._GLib.timeout_add(5000, loop.quit)
+        loop.run()
+
+        if not portal_uri:
+            raise RuntimeError("XDG portal screenshot failed or timed out")
+
+        portal_path = portal_uri[0].replace("file://", "")
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        screenshot_path = Path(tmp)
+        shutil.move(portal_path, str(screenshot_path))
+
+        log_duration(
+            logger, "selector_background_captured", capture_started_at, path=screenshot_path
+        )
+
+        pixbuf_started_at = now()
+        pixbuf = self._GdkPixbuf.Pixbuf.new_from_file(str(screenshot_path))
         log_duration(
             logger,
-            "selector_overlay_shown",
-            window_started_at,
+            "selector_background_loaded",
+            pixbuf_started_at,
             width=pixbuf.get_width(),
             height=pixbuf.get_height(),
-            rgba=self._rgba_available,
-            composited=composited,
         )
-
-        self._Gtk.main()
-        log_duration(logger, "selector_gtk_main_exited", self._run_started_at)
-
-        # Ensure the overlay is fully removed from screen before caller
-        # (e.g. mss) captures the framebuffer again.
-        cleanup_started_at = now()
-        win.hide()
-        import gi
-        gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk as _Gtk, Gdk as _Gdk
-        while _Gtk.events_pending():
-            _Gtk.main_iteration()
-        _Gdk.flush()
-        win.destroy()
-        log_duration(logger, "selector_overlay_destroyed", cleanup_started_at)
-        if self._result is None:
-            screenshot_path.unlink(missing_ok=True)
-            self._screenshot_path = None
-            log_duration(logger, "selector_finished", self._run_started_at, result="cancelled")
-            return None
-        log_duration(
-            logger,
-            "selector_finished",
-            self._run_started_at,
-            result="selected",
-            rect=self._result,
-            annotations=len(self._annotations),
-        )
-        return SelectionResult(
-            rect=self._result,
-            screenshot_path=screenshot_path,
-            annotations=list(self._annotations),
-        )
+        return screenshot_path, pixbuf
 
     def destroy(self) -> None:
-        pass
+        if self._window is not None:
+            self._window.destroy()
+            self._window = None
 
     def _update_overlay_geometry(self) -> None:
         """Schedule a redraw of the single overlay DrawingArea.
@@ -749,6 +892,8 @@ class AreaSelector:
                 )
                 return True
         elif event.button == 3:
+            if not self._in_run:
+                return True
             self._result = None
             self._Gtk.main_quit()
             return True
@@ -897,6 +1042,8 @@ class AreaSelector:
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
         if event.keyval == Gdk.KEY_Escape:
+            if not self._in_run:
+                return True
             self._result = None
             self._Gtk.main_quit()
             return True
@@ -904,6 +1051,8 @@ class AreaSelector:
 
     def _on_window_button_press(self, widget, event):
         if event.button == 3:
+            if not self._in_run:
+                return True
             self._result = None
             self._Gtk.main_quit()
             return True
@@ -928,7 +1077,7 @@ class AreaSelector:
             self._set_active_tool(None)
 
     def _on_confirm(self, button) -> None:
-        if self._selection_rect is None:
+        if not self._in_run or self._selection_rect is None:
             return
         self._commit_text_entry()
         self._result = self._selection_rect
@@ -936,6 +1085,8 @@ class AreaSelector:
         self._Gtk.main_quit()
 
     def _on_cancel(self, button) -> None:
+        if not self._in_run:
+            return
         self._result = None
         log_event(logger, "selector_cancelled", reason="toolbar")
         self._Gtk.main_quit()

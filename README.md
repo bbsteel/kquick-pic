@@ -93,6 +93,33 @@ uv run python -m quick_pic
 
 之所以必须使用 `--system-site-packages`，是因为 GTK3 / PyGObject / `dbus-python` 通常来自系统包，而不是 pip。
 
+### 安装系统依赖
+
+**Arch Linux / SteamOS（pacman）：**
+
+```bash
+sudo pacman -S python-gobject gtk3 python-dbus
+```
+
+**Ubuntu / Debian（apt）：**
+
+```bash
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 python3-dbus
+```
+
+**Fedora（dnf）：**
+
+```bash
+sudo dnf install python3-gobject gtk3 python3-dbus
+```
+
+安装后可验证：
+
+```bash
+python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; print('GTK OK')"
+python3 -c "import dbus; print('dbus OK')"
+```
+
 ## 分发给别人
 
 ### 方式一：构建单体可执行程序（推荐）
