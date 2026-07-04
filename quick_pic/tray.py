@@ -274,6 +274,17 @@ class TrayManager:
             logger.warning("Failed to register refreshed tray item")
 
 
+# dbusmenu item ids — single source of truth for both the layout advertised
+# via GetLayout and the click dispatch in Event. They must never diverge:
+# Plasma clicks send the id it saw in the layout.
+_MENU_ID_SCREENSHOT = 1
+_MENU_ID_SETTINGS = 2
+_MENU_ID_SEP1 = 3
+_MENU_ID_PID = 4
+_MENU_ID_SEP2 = 5
+_MENU_ID_QUIT = 6
+
+
 def _create_sni(
     bus,
     bus_name,
@@ -377,11 +388,11 @@ def _create_sni(
             if event_id != "clicked":
                 return
 
-            if menu_id == 1:
+            if menu_id == _MENU_ID_SCREENSHOT:
                 self._on_activate()
-            elif menu_id == 2:
+            elif menu_id == _MENU_ID_SETTINGS:
                 self._on_settings()
-            elif menu_id == 4:
+            elif menu_id == _MENU_ID_QUIT:
                 self._on_quit()
 
         @dbus.service.signal("org.kde.StatusNotifierItem")
@@ -491,12 +502,12 @@ def _create_sni(
                     ),
                     dbus.Array(
                         [
-                            _item(1, {"label": dbus.String(t("tray.take_screenshot"))}),
-                            _item(2, {"label": dbus.String(t("tray.settings"))}),
-                            _item(3, {"type": dbus.String("separator")}),
-                            _item(4, {"label": dbus.String(f"PID: {os.getpid()}"), "enabled": dbus.Boolean(False)}),
-                            _item(5, {"type": dbus.String("separator")}),
-                            _item(6, {"label": dbus.String(t("tray.quit"))}),
+                            _item(_MENU_ID_SCREENSHOT, {"label": dbus.String(t("tray.take_screenshot"))}),
+                            _item(_MENU_ID_SETTINGS, {"label": dbus.String(t("tray.settings"))}),
+                            _item(_MENU_ID_SEP1, {"type": dbus.String("separator")}),
+                            _item(_MENU_ID_PID, {"label": dbus.String(f"PID: {os.getpid()}"), "enabled": dbus.Boolean(False)}),
+                            _item(_MENU_ID_SEP2, {"type": dbus.String("separator")}),
+                            _item(_MENU_ID_QUIT, {"label": dbus.String(t("tray.quit"))}),
                         ],
                         signature="v",
                     ),
