@@ -265,8 +265,7 @@ class AreaSelector:
 
         # Build the GTK window once on the first invocation (usually already
         # done by the startup pre-warm) and reuse it: rebuilding all widgets
-        # per capture is pointless work, and as a POPUP window the map itself
-        # is free of KWin side effects.
+        # per capture is pointless work.
         if self._window is None:
             self._setup_window()
 
@@ -296,38 +295,13 @@ class AreaSelector:
 
         window_started_at = now()
         win = self._window
-        # Map the override-redirect window for this capture. Unmanaged
-        # windows must size/position themselves — there is no WM fullscreen.
-        win.move(0, 0)
+        # Map the window for this capture; the WM fullscreens and focuses it.
         win.resize(pixbuf.get_width(), pixbuf.get_height())
+        win.fullscreen()
         win.show_all()
         # show_all() un-hides the toolbar/palette/text editor; hide them again.
         self._hide_selection_controls()
         self._drawing.grab_focus()
-        # Override-redirect windows never receive keyboard focus from the WM,
-        # so grab the seat (XWayland forwards the keyboard grab to KWin via
-        # the xwayland-keyboard-grab protocol). Same-connection ordering
-        # guarantees the window is viewable by the time the grab is processed.
-        gdkwin = win.get_window()
-        if gdkwin is not None:
-            seat = self._Gdk.Display.get_default().get_default_seat()
-            status = seat.grab(
-                gdkwin,
-                self._Gdk.SeatCapabilities.ALL,
-                True,  # owner_events: deliver events to our widgets normally
-                None,
-                None,
-                None,
-                None,
-            )
-            if status != self._Gdk.GrabStatus.SUCCESS:
-                logger.warning(f"Seat grab failed: {status} (Esc may not work)")
-            # Override-redirect windows never get X input focus from the WM.
-            # The grab already routes key events here, but without a FocusIn
-            # GTK keeps has-toplevel-focus false, so the input-method context
-            # (fcitx) never activates and text annotation cannot be typed
-            # into. Set X input focus on the window explicitly.
-            gdkwin.focus(self._Gdk.CURRENT_TIME)
         log_duration(
             logger,
             "selector_overlay_shown",
@@ -345,13 +319,12 @@ class AreaSelector:
             self._in_run = False
         log_duration(logger, "selector_gtk_main_exited", self._run_started_at)
 
-        # Release the seat grab and unmap the window. Unmapping an unmanaged
-        # POPUP has no KWin side effects, and leaving no fullscreen window
-        # mapped between captures avoids compositor-state issues across
-        # screen-off/wake cycles. Process pending events + flush so the
-        # overlay is really gone before the next capture reads the screen.
+        # Unmap the window. Leaving no fullscreen window mapped between
+        # captures avoids compositor-state issues across screen-off/wake
+        # cycles (the permanently-mapped variant caused minutes-long black
+        # screens). Process pending events + flush so the overlay is really
+        # gone before the next capture reads the screen.
         cleanup_started_at = now()
-        self._Gdk.Display.get_default().get_default_seat().ungrab()
         win.hide()
         import gi
         gi.require_version("Gtk", "3.0")
@@ -388,13 +361,18 @@ class AreaSelector:
     def _setup_window(self) -> None:
         """Build the GTK overlay window and all child widgets (called once).
 
-        The window is a POPUP (X11 override-redirect): KWin does not manage
-        it, so mapping it triggers neither a window-open animation nor the
-        launch-feedback bouncing cursor, and it never appears in the taskbar.
-        The window stays unmapped between captures — run() maps it per
-        invocation and hides it again on exit.
+        A normal managed TOPLEVEL window, mapped per capture and hidden
+        afterwards. The WM gives it real keyboard focus, which the text
+        annotation editor needs: without a genuine FocusIn, GTK never
+        activates the input-method context (fcitx) and typing is dead — an
+        override-redirect POPUP variant failed exactly that way. The
+        launch-feedback bounce once blamed on this map came from the XDG
+        portal capture call (verified empirically); a TOPLEVEL map is clean.
         """
-        win = self._Gtk.Window(type=self._Gtk.WindowType.POPUP)
+        win = self._Gtk.Window(type=self._Gtk.WindowType.TOPLEVEL)
+        win.set_decorated(False)
+        win.set_keep_above(True)
+        win.set_accept_focus(True)
         win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
 
         # The overlay relies on OPERATOR_CLEAR writing transparent pixels so the
