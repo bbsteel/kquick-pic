@@ -325,17 +325,7 @@ class AreaSelector:
         # screens). Process pending events + flush so the overlay is really
         # gone before the next capture reads the screen.
         cleanup_started_at = now()
-        win.hide()
-        import gi
-        gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk as _Gtk, Gdk as _Gdk
-        while _Gtk.events_pending():
-            _Gtk.main_iteration()
-        _Gdk.flush()
-        # Release the full-screen background while idle — the persistent
-        # window would otherwise pin tens of MB of pixbuf between captures.
-        self._background_image_widget.clear()
-        self._background_pixbuf = None
+        self._hide_overlay_after_run()
         log_duration(logger, "selector_overlay_hidden", cleanup_started_at)
 
         if self._result is None:
@@ -814,6 +804,22 @@ class AreaSelector:
         if self._window is not None:
             self._window.destroy()
             self._window = None
+
+    def _hide_overlay_after_run(self) -> None:
+        if self._window is None:
+            return
+
+        self._window.unfullscreen()
+        self._window.hide()
+        while self._Gtk.events_pending():
+            self._Gtk.main_iteration()
+        self._Gdk.flush()
+
+        # KWin may still be processing the just-hidden fullscreen surface.
+        # Clearing the Gtk.Image immediately can leave that surface with empty
+        # content during the compositor transition, which appears as a black
+        # screen. The next capture's set_from_pixbuf() replaces this image.
+        self._background_pixbuf = None
 
     def _update_overlay_geometry(self) -> None:
         """Schedule a redraw of the single overlay DrawingArea.
