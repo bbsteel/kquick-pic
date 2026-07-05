@@ -1149,6 +1149,7 @@ class AreaSelector:
         self._end_y = y
         if self._gesture_kind and self._gesture_kind.startswith("selection-"):
             self._update_selection_drag()
+            self._position_toolbar()
         self._queue_drag_redraw(previous_rect)
         self._motion_flush_count += 1
         log_debug_duration(
