@@ -23,12 +23,18 @@ class AutoStartManager:
             logger.info("Autostart disabled")
 
     def _write_desktop_entry(self, config) -> None:
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             exec_path = Path(sys.executable).resolve()
             exec_cmd = str(exec_path)
             working_dir = str(exec_path.parent)
         else:
-            exec_cmd = f"{Path(sys.executable).resolve()} -m quick_pic"
+            # Keep the venv symlink (do not resolve to /usr/bin/python3.x):
+            # - launching must use the venv so site-packages resolve
+            # - KWin still canonicalizes Exec[0] for ScreenShot2 auth match
+            python_path = Path(sys.executable)
+            if not python_path.is_absolute():
+                python_path = python_path.resolve()
+            exec_cmd = f"{python_path} -m quick_pic"
             working_dir = str(Path(__file__).resolve().parent.parent)
 
         icon_path = get_icon_path(config.icon_theme).resolve()
@@ -45,7 +51,11 @@ class AutoStartManager:
                 f"Icon={icon_path}",
                 "Terminal=false",
                 "Categories=Utility;Graphics;",
+                "StartupNotify=false",
                 "X-GNOME-Autostart-enabled=true",
+                # Same restricted interface as applications/*.desktop so a
+                # process launched via autostart is also authorized for KWin.
+                "X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2",
                 "",
             ]
         )

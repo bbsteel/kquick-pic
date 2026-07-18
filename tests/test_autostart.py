@@ -52,7 +52,15 @@ class TestAutoStartManager:
             assert "Icon=" in content
             assert "Terminal=false" in content
             assert "Categories=Utility;Graphics;" in content
+            assert "StartupNotify=false" in content
             assert "X-GNOME-Autostart-enabled=true" in content
+            assert (
+                "X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2"
+                in content
+            )
+            # Dev autostart must keep the interpreter path un-resolved so a
+            # venv symlink stays in Exec (KWin canonicalizes for auth).
+            assert "-m quick_pic" in content or "Exec=" in content
 
     def test_apply_with_parent_dir_created(self):
         with tempfile.TemporaryDirectory() as tmp:
