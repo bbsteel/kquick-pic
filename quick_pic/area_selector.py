@@ -118,13 +118,18 @@ class AreaSelector:
     """GTK3 fullscreen overlay for selecting a screen region.
 
     Press Escape or right-click to cancel. Left-drag to select.
+    After a selection exists (no annotation tool active): drag the interior
+    to move, or drag edge/corner handles to resize; drag far outside to
+    reselect. Double-click inside confirms.
     """
 
     _TEXT_FONT = "Sans 20"
     _TEXT_PADDING_X = 8
     _TEXT_PADDING_Y = 6
-    _SELECTION_HANDLE_MARGIN = 10
-    _SELECTION_HANDLE_SIZE = 8
+    # Hit strip around the frame (px). Larger than the drawn handle so edges
+    # are easy to grab without overshooting into reselect.
+    _SELECTION_HANDLE_MARGIN = 16
+    _SELECTION_HANDLE_SIZE = 10
     _MIN_SELECTION_SIZE = 24
     _MOTION_MIN_INTERVAL = 0.008  # 125Hz cap on drag motion processing
     _rgba_available: bool = False
@@ -962,7 +967,21 @@ class AreaSelector:
         if event.button == 1 and self._selection_rect is None:
             self._begin_selection_drag(event, reselecting=False)
             return True
-        elif (
+
+        # Resize/move handles must win over "click outside → reselect".
+        # Handles sit on the border and half-extend outside the selection rect;
+        # treating those hits as reselect made edge drag effectively unusable.
+        if (
+            event.button == 1
+            and self._selection_rect is not None
+            and self._can_edit_selection()
+        ):
+            selection_handle = self._selection_hit_test(event.x, event.y)
+            if selection_handle is not None:
+                self._begin_selection_handle_drag(event, selection_handle)
+                return True
+
+        if (
             event.button == 1
             and self._selection_rect is not None
             and self._pending_text_rect is None
@@ -1000,26 +1019,6 @@ class AreaSelector:
         elif event.button == 1 and self._active_tool == "number":
             if self._add_number_stamp_at(event.x, event.y):
                 self._update_idle_cursor(event.x, event.y)
-                return True
-        elif event.button == 1 and self._selection_rect is not None and self._can_edit_selection():
-            selection_handle = self._selection_hit_test(event.x, event.y)
-            if selection_handle is not None:
-                self._dragging = True
-                self._gesture_kind = f"selection-{selection_handle}"
-                self._selection_drag_origin = self._selection_rect
-                self._start_x = event.x
-                self._start_y = event.y
-                self._end_x = event.x
-                self._end_y = event.y
-                self._apply_selection_cursor(selection_handle)
-                log_debug_event(
-                    logger,
-                    "selector_drag_started",
-                    gesture=self._gesture_kind,
-                    x=int(event.x),
-                    y=int(event.y),
-                    origin=self._selection_drag_origin,
-                )
                 return True
         elif event.button == 3:
             if not self._in_run:
@@ -1249,6 +1248,26 @@ class AreaSelector:
         log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
         self._update_overlay_geometry()
 
+    def _begin_selection_handle_drag(self, event, handle: str) -> None:
+        """Start move/resize from a selection frame handle (n/s/e/w/corners/move)."""
+        self._dragging = True
+        self._reselecting = False
+        self._gesture_kind = f"selection-{handle}"
+        self._selection_drag_origin = self._selection_rect
+        self._start_x = event.x
+        self._start_y = event.y
+        self._end_x = event.x
+        self._end_y = event.y
+        self._apply_selection_cursor(handle)
+        log_debug_event(
+            logger,
+            "selector_drag_started",
+            gesture=self._gesture_kind,
+            x=int(event.x),
+            y=int(event.y),
+            origin=self._selection_drag_origin,
+        )
+
     def _hide_selection_controls(self) -> None:
         if self._toolbar_frame is not None:
             self._toolbar_frame.hide()
@@ -1303,11 +1322,27 @@ class AreaSelector:
         if x < sx - margin or x > right + margin or y < sy - margin or y > bottom + margin:
             return None
 
-        near_left = abs(x - sx) <= margin
-        near_right = abs(x - right) <= margin
-        near_top = abs(y - sy) <= margin
-        near_bottom = abs(y - bottom) <= margin
-        inside = sx <= x <= right and sy <= y <= bottom
+        dist_left = abs(x - sx)
+        dist_right = abs(x - right)
+        dist_top = abs(y - sy)
+        dist_bottom = abs(y - bottom)
+
+        near_left = dist_left <= margin
+        near_right = dist_right <= margin
+        near_top = dist_top <= margin
+        near_bottom = dist_bottom <= margin
+
+        # On small rects both sides can fall inside the margin; keep the closer.
+        if near_left and near_right:
+            if dist_left <= dist_right:
+                near_right = False
+            else:
+                near_left = False
+        if near_top and near_bottom:
+            if dist_top <= dist_bottom:
+                near_bottom = False
+            else:
+                near_top = False
 
         if near_left and near_top:
             return "nw"
@@ -1317,15 +1352,17 @@ class AreaSelector:
             return "sw"
         if near_right and near_bottom:
             return "se"
-        if near_left and sy <= y <= bottom:
+        # Edge strips use the full margin band (including outside the rect),
+        # not only the segment collinear with the side interior.
+        if near_left:
             return "w"
-        if near_right and sy <= y <= bottom:
+        if near_right:
             return "e"
-        if near_top and sx <= x <= right:
+        if near_top:
             return "n"
-        if near_bottom and sx <= x <= right:
+        if near_bottom:
             return "s"
-        if inside:
+        if sx <= x <= right and sy <= y <= bottom:
             return "move"
         return None
 
