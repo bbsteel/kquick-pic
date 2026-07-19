@@ -74,3 +74,47 @@ def test_selection_drag_repositions_toolbar_during_motion_flush():
 
     assert selector._selection_rect == (110, 120, 100, 70)
     assert selector._container.moves == [(selector._toolbar_frame, 110, 202)]
+
+
+def test_position_toolbar_places_below_selection_when_space_allows():
+    selector = object.__new__(AreaSelector)
+    selector._selection_rect = (80, 90, 100, 70)
+    selector._background_pixbuf = FakePixbuf()  # 500x400
+    selector._toolbar_frame = FakeToolbarFrame()  # 120x52
+    selector._color_palette_frame = None
+    selector._container = FakeContainer()
+
+    selector._position_toolbar()
+
+    # below: 90 + 70 + 12 = 172
+    assert selector._container.moves == [(selector._toolbar_frame, 80, 172)]
+
+
+def test_position_toolbar_flips_above_when_selection_near_bottom():
+    selector = object.__new__(AreaSelector)
+    # Selection bottom at y=380 on a 400px-tall screen — no room below.
+    selector._selection_rect = (50, 300, 200, 80)
+    selector._background_pixbuf = FakePixbuf()  # 500x400
+    selector._toolbar_frame = FakeToolbarFrame()  # 120x52
+    selector._color_palette_frame = None
+    selector._container = FakeContainer()
+
+    selector._position_toolbar()
+
+    # above: 300 - 52 - 12 = 236
+    assert selector._container.moves == [(selector._toolbar_frame, 50, 236)]
+
+
+def test_position_toolbar_clamps_when_selection_fills_screen():
+    selector = object.__new__(AreaSelector)
+    selector._selection_rect = (0, 0, 500, 400)
+    selector._background_pixbuf = FakePixbuf()  # 500x400
+    selector._toolbar_frame = FakeToolbarFrame()  # 120x52
+    selector._color_palette_frame = None
+    selector._container = FakeContainer()
+
+    selector._position_toolbar()
+
+    # Neither above nor below has room; clamp to bottom margin band.
+    # y = max(16, min(0+400+12, 400-52-16)) = max(16, min(412, 332)) = 332
+    assert selector._container.moves == [(selector._toolbar_frame, 16, 332)]

@@ -1649,15 +1649,31 @@ class AreaSelector:
     def _position_toolbar(self) -> None:
         if self._selection_rect is None or self._toolbar_frame is None or self._container is None:
             return
+        if self._background_pixbuf is None:
+            return
         sx, sy, sw, sh = self._selection_rect
         _, natural = self._toolbar_frame.get_preferred_size()
         toolbar_width = natural.width
         toolbar_height = natural.height
         screen_width = self._background_pixbuf.get_width()
         screen_height = self._background_pixbuf.get_height()
-        x = max(16, min(sx, screen_width - toolbar_width - 16))
-        y = min(screen_height - toolbar_height - 16, sy + sh + 12)
+        margin = 16
+        gap = 12
+        x = max(margin, min(sx, screen_width - toolbar_width - margin))
+        # Prefer below the selection; if that would clip past the bottom
+        # edge, flip above so the toolbar stays fully visible.
+        below_y = sy + sh + gap
+        above_y = sy - toolbar_height - gap
+        if below_y + toolbar_height <= screen_height - margin:
+            y = below_y
+        elif above_y >= margin:
+            y = above_y
+        else:
+            # Selection fills almost the whole screen: clamp into the
+            # larger remaining band without going off-screen.
+            y = max(margin, min(below_y, screen_height - toolbar_height - margin))
         self._container.move(self._toolbar_frame, x, y)
+        # Keep the color palette attached just under the toolbar.
         self._position_color_palette(x, y + toolbar_height + 4)
 
     def _set_active_tool(self, tool_name: str | None) -> None:
