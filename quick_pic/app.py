@@ -46,6 +46,7 @@ class QuickPicApp:
             on_screenshot=self._on_screenshot_triggered,
             on_settings=self._on_settings,
             on_quit=self._on_quit,
+            on_about=self._on_about,
             config=self._config,
         )
 
@@ -246,6 +247,12 @@ class QuickPicApp:
                 logger.info(f"Cleaned up {len(stale)} stale screenshot temp files")
         except Exception:
             logger.warning("Failed to clean stale temp screenshots", exc_info=True)
+
+    def _on_about(self, widget) -> None:
+        from quick_pic.about import AboutDialog
+        dialog = AboutDialog()
+        dialog.run()
+        dialog.destroy()
 
     def _on_settings(self, widget) -> None:
         from quick_pic.settings_dialog import SettingsDialog

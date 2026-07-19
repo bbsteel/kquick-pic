@@ -45,6 +45,19 @@
     "selector.accept_text": "确认文字",
     "selector.cancel_text": "取消文字",
     "autostart.name": "Quick Pic",
-    "autostart.comment": "快速截图工具"
+    "autostart.comment": "快速截图工具",
+    "tray.about": "关于",
+    "about.title": "关于 Quick Pic",
+    "about.close": "关闭",
+    "about.version": "版本",
+    "about.commit": "提交",
+    "about.build_number": "构建号",
+    "about.build_time": "构建时间",
+    "about.platform": "平台",
+    "about.python": "Python",
+    "about.gtk": "GTK",
+    "about.session_type": "会话类型",
+    "about.gdk_backend": "GDK 后端",
+    "about.display": "显示"
   }
 }

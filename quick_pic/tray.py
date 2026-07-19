@@ -1,5 +1,6 @@
 import os
 import logging
+from dataclasses import dataclass
 
 from quick_pic.i18n import t
 
@@ -104,10 +105,11 @@ class TrayManager:
     Left-click → screenshot directly. Right-click → GTK context menu.
     """
 
-    def __init__(self, on_screenshot, on_settings, on_quit, config):
+    def __init__(self, on_screenshot, on_settings, on_quit, config, on_about=None):
         self._on_screenshot = on_screenshot
         self._on_settings = on_settings
         self._on_quit = on_quit
+        self._on_about = on_about or (lambda *_a: None)
         self._config = config
         self._Gtk = None
         self._bus = None
@@ -217,28 +219,31 @@ class TrayManager:
 
         self._menu = self._Gtk.Menu()
 
-        item_screenshot = self._Gtk.MenuItem(label=t("tray.take_screenshot"))
-        item_screenshot.connect("activate", self._on_screenshot)
-        self._menu.append(item_screenshot)
-
-        item_settings = self._Gtk.MenuItem(label=t("tray.settings"))
-        item_settings.connect("activate", self._on_settings)
-        self._menu.append(item_settings)
-
-        sep = self._Gtk.SeparatorMenuItem()
-        self._menu.append(sep)
-
-        item_pid = self._Gtk.MenuItem(label=f"PID: {os.getpid()}")
-        item_pid.set_sensitive(False)
-        self._menu.append(item_pid)
-
-        item_quit = self._Gtk.MenuItem(label=t("tray.quit"))
-        item_quit.connect("activate", self._on_quit_wrapper)
-        self._menu.append(item_quit)
+        handlers = {
+            "screenshot": self._on_screenshot,
+            "settings": self._on_settings,
+            "about": self._on_about_wrapper,
+            "quit": self._on_quit_wrapper,
+        }
+        for spec in _menu_layout_specs(os.getpid()):
+            if spec.separator:
+                self._menu.append(self._Gtk.SeparatorMenuItem())
+                continue
+            item = self._Gtk.MenuItem(label=spec.resolved_label())
+            item.set_sensitive(spec.enabled)
+            if spec.action in handlers:
+                item.connect("activate", handlers[spec.action])
+            self._menu.append(item)
         self._menu.show_all()
+
+    def _on_about_wrapper(self, widget) -> None:
+        self._on_about(widget)
 
     def _on_settings_dbus(self):
         self._on_settings(None)
+
+    def _on_about_dbus(self):
+        self._on_about(None)
 
     def _on_quit_dbus(self):
         self._on_quit(None)
@@ -259,6 +264,7 @@ class TrayManager:
             on_activate=self._on_activate_dbus,
             on_context_menu=self._on_context_menu_dbus,
             on_settings=self._on_settings_dbus,
+            on_about=self._on_about_dbus,
             on_quit=self._on_quit_dbus,
         )
 
@@ -279,10 +285,51 @@ class TrayManager:
 # Plasma clicks send the id it saw in the layout.
 _MENU_ID_SCREENSHOT = 1
 _MENU_ID_SETTINGS = 2
-_MENU_ID_SEP1 = 3
-_MENU_ID_PID = 4
-_MENU_ID_SEP2 = 5
-_MENU_ID_QUIT = 6
+_MENU_ID_ABOUT = 3
+_MENU_ID_SEP1 = 4
+_MENU_ID_PID = 5
+_MENU_ID_SEP2 = 6
+_MENU_ID_QUIT = 7
+
+
+@dataclass(frozen=True)
+class _MenuItemSpec:
+    """One tray menu entry, shared by the GTK popup and the D-Bus layout."""
+
+    item_id: int
+    label_key: str | None = None
+    label: str | None = None
+    action: str | None = None
+    enabled: bool = True
+    separator: bool = False
+
+    def resolved_label(self) -> str:
+        if self.label_key is not None:
+            return t(self.label_key)
+        return self.label or ""
+
+
+def _menu_layout_specs(pid: int) -> list[_MenuItemSpec]:
+    return [
+        _MenuItemSpec(_MENU_ID_SCREENSHOT, label_key="tray.take_screenshot", action="screenshot"),
+        _MenuItemSpec(_MENU_ID_SETTINGS, label_key="tray.settings", action="settings"),
+        _MenuItemSpec(_MENU_ID_ABOUT, label_key="tray.about", action="about"),
+        _MenuItemSpec(_MENU_ID_SEP1, separator=True),
+        _MenuItemSpec(_MENU_ID_PID, label=f"PID: {pid}", enabled=False),
+        _MenuItemSpec(_MENU_ID_SEP2, separator=True),
+        _MenuItemSpec(_MENU_ID_QUIT, label_key="tray.quit", action="quit"),
+    ]
+
+
+def _dispatch_menu_click(menu_id, on_activate, on_settings, on_about, on_quit) -> None:
+    if menu_id == _MENU_ID_SCREENSHOT:
+        on_activate()
+    elif menu_id == _MENU_ID_SETTINGS:
+        on_settings()
+    elif menu_id == _MENU_ID_ABOUT:
+        on_about()
+    elif menu_id == _MENU_ID_QUIT:
+        on_quit()
 
 
 def _create_sni(
@@ -296,10 +343,13 @@ def _create_sni(
     on_context_menu,
     on_settings,
     on_quit,
+    on_about=None,
 ):
     """Factory: creates a D-Bus StatusNotifierItem."""
     import dbus
     import dbus.service
+
+    on_about = on_about or (lambda: None)
 
     class _SNI(dbus.service.Object):
         def __init__(self):
@@ -307,6 +357,7 @@ def _create_sni(
             self._on_activate = on_activate
             self._on_context_menu = on_context_menu
             self._on_settings = on_settings
+            self._on_about = on_about
             self._on_quit = on_quit
             self._icon_name = dbus.String(icon_name)
             self._icon_theme_path = dbus.String(icon_theme_path)
@@ -388,12 +439,13 @@ def _create_sni(
             if event_id != "clicked":
                 return
 
-            if menu_id == _MENU_ID_SCREENSHOT:
-                self._on_activate()
-            elif menu_id == _MENU_ID_SETTINGS:
-                self._on_settings()
-            elif menu_id == _MENU_ID_QUIT:
-                self._on_quit()
+            _dispatch_menu_click(
+                menu_id,
+                on_activate=self._on_activate,
+                on_settings=self._on_settings,
+                on_about=self._on_about,
+                on_quit=self._on_quit,
+            )
 
         @dbus.service.signal("org.kde.StatusNotifierItem")
         def NewIcon(self):
@@ -493,6 +545,21 @@ def _create_sni(
                     signature=None,
                 )
 
+            children = []
+            for spec in _menu_layout_specs(os.getpid()):
+                if spec.separator:
+                    children.append(_item(spec.item_id, {"type": dbus.String("separator")}))
+                else:
+                    children.append(
+                        _item(
+                            spec.item_id,
+                            {
+                                "label": dbus.String(spec.resolved_label()),
+                                "enabled": dbus.Boolean(spec.enabled),
+                            },
+                        )
+                    )
+
             return dbus.Struct(
                 (
                     dbus.Int32(0),
@@ -500,17 +567,7 @@ def _create_sni(
                         {"children-display": dbus.String("submenu")},
                         signature="sv",
                     ),
-                    dbus.Array(
-                        [
-                            _item(_MENU_ID_SCREENSHOT, {"label": dbus.String(t("tray.take_screenshot"))}),
-                            _item(_MENU_ID_SETTINGS, {"label": dbus.String(t("tray.settings"))}),
-                            _item(_MENU_ID_SEP1, {"type": dbus.String("separator")}),
-                            _item(_MENU_ID_PID, {"label": dbus.String(f"PID: {os.getpid()}"), "enabled": dbus.Boolean(False)}),
-                            _item(_MENU_ID_SEP2, {"type": dbus.String("separator")}),
-                            _item(_MENU_ID_QUIT, {"label": dbus.String(t("tray.quit"))}),
-                        ],
-                        signature="v",
-                    ),
+                    dbus.Array(children, signature="v"),
                 ),
                 signature=None,
             )

@@ -17,7 +17,31 @@ uv pip install --python "$PYTHON_BIN" pyinstaller mss pynput Pillow
 
 echo "=== Building with PyInstaller ==="
 cd "$ROOT_DIR"
-pyinstaller --distpath "$ROOT_DIR/dist" quick-pic.spec
+BUILD_INFO_FILE="$ROOT_DIR/build/build-info.json"
+mkdir -p "$(dirname "$BUILD_INFO_FILE")"
+COMMIT_ID="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+BUILD_NUMBER="$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || printf 'unknown')"
+BUILD_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+python - "$BUILD_INFO_FILE" "$COMMIT_ID" "$BUILD_NUMBER" "$BUILD_TIME" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.write_text(
+    json.dumps(
+        {
+            "commit_id": sys.argv[2],
+            "build_number": sys.argv[3],
+            "build_time": sys.argv[4],
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+QUICK_PIC_BUILD_INFO_FILE="$BUILD_INFO_FILE" pyinstaller --distpath "$ROOT_DIR/dist" quick-pic.spec
 
 echo "=== Build complete ==="
 echo "Output: $OUTPUT_DIR/"

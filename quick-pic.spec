@@ -1,14 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
+datas = [
+    ('quick_pic/icons', 'quick_pic/icons'),
+    ('quick_pic/locales', 'quick_pic/locales'),
+]
+
+build_info_file = os.environ.get('QUICK_PIC_BUILD_INFO_FILE')
+if build_info_file:
+    datas.append((build_info_file, 'quick_pic'))
+
 a = Analysis(
     ['quick_pic/__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('quick_pic/icons', 'quick_pic/icons'),
-        ('quick_pic/locales', 'quick_pic/locales'),
-    ],
+    datas=datas,
     hiddenimports=[
+        'quick_pic.about',
         'mss', 'mss.tools', 'mss.linux',
         'pynput', 'pynput.keyboard', 'pynput.keyboard._xorg',
         'pynput._util', 'pynput._util.xorg',

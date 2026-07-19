@@ -45,6 +45,19 @@
     "selector.accept_text": "Accept text",
     "selector.cancel_text": "Cancel text",
     "autostart.name": "Quick Pic",
-    "autostart.comment": "Quick screenshot tool"
+    "autostart.comment": "Quick screenshot tool",
+    "tray.about": "About",
+    "about.title": "About Quick Pic",
+    "about.close": "Close",
+    "about.version": "Version",
+    "about.commit": "Commit",
+    "about.build_number": "Build Number",
+    "about.build_time": "Build Time",
+    "about.platform": "Platform",
+    "about.python": "Python",
+    "about.gtk": "GTK",
+    "about.session_type": "Session",
+    "about.gdk_backend": "GDK Backend",
+    "about.display": "Display"
   }
 }
