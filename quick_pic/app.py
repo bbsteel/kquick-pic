@@ -123,7 +123,9 @@ class QuickPicApp:
             if self._area_selector is None:
                 self._area_selector = AreaSelector()
             try:
-                selection = self._area_selector.run()
+                selection = self._area_selector.run(
+                    include_cursor=self._config.include_cursor,
+                )
             except Exception:
                 self._area_selector.destroy()
                 self._area_selector = None

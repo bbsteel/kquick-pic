@@ -152,6 +152,17 @@ class SettingsDialog:
         autostart_box.pack_start(self._autostart_check, True, True, 0)
         content.add(autostart_box)
 
+        # -- Include cursor row --
+        cursor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._cursor_label = Gtk.Label(label=t("settings.include_cursor"))
+        self._cursor_label.set_xalign(0)
+        self._cursor_label.set_width_chars(10)
+        self._cursor_check = Gtk.CheckButton(label=t("settings.include_cursor_label"))
+        self._cursor_check.set_active(config.include_cursor)
+        cursor_box.pack_start(self._cursor_label, False, False, 0)
+        cursor_box.pack_start(self._cursor_check, True, True, 0)
+        content.add(cursor_box)
+
         # -- Buttons --
         self._save_button = self._dialog.add_button(t("settings.save"), Gtk.ResponseType.OK)
         self._cancel_button = self._dialog.add_button(t("settings.cancel"), Gtk.ResponseType.CANCEL)
@@ -240,6 +251,7 @@ class SettingsDialog:
                 icon_theme=self._icon_store[self._icon_combo.get_active_iter()][2],
                 autostart=self._autostart_check.get_active(),
                 language=self._language_store[self._language_combo.get_active_iter()][1],
+                include_cursor=self._cursor_check.get_active(),
             )
         else:
             set_language(self._initial_language)
@@ -269,6 +281,8 @@ class SettingsDialog:
         self._hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
         self._autostart_label.set_text(t("settings.autostart"))
         self._autostart_check.set_label(t("settings.autostart_label"))
+        self._cursor_label.set_text(t("settings.include_cursor"))
+        self._cursor_check.set_label(t("settings.include_cursor_label"))
         self._cancel_button.set_label(t("settings.cancel"))
         self._save_button.set_label(t("settings.save"))
         for row in self._icon_store:

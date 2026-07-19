@@ -18,6 +18,8 @@
     "settings.hotkey_placeholder": "Click here and press keys...",
     "settings.autostart": "Autostart:",
     "settings.autostart_label": "Start automatically on login",
+    "settings.include_cursor": "Cursor:",
+    "settings.include_cursor_label": "Include mouse cursor in screenshots",
     "settings.cancel": "Cancel",
     "settings.save": "Save",
     "settings.select_save_directory": "Select Save Directory",

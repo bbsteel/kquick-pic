@@ -14,7 +14,7 @@ class ScreenshotCapture:
         import mss
         from PIL import Image
 
-        with mss.mss() as sct:
+        with mss.mss(with_cursor=getattr(config, "include_cursor", True)) as sct:
             screenshot = sct.grab(sct.monitors[0])
             image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
             return ScreenshotCapture._save_image(config, image)
@@ -70,7 +70,7 @@ class ScreenshotCapture:
 
         x, y, w, h = rect
         region = {"left": x, "top": y, "width": w, "height": h}
-        with mss.mss() as sct:
+        with mss.mss(with_cursor=getattr(config, "include_cursor", True)) as sct:
             screenshot = sct.grab(region)
             image = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
             return ScreenshotCapture._save_image(config, image)

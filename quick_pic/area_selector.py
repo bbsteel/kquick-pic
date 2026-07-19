@@ -198,6 +198,7 @@ class AreaSelector:
         self._composited = False
         self._background_image_widget = None
         self._in_run = False
+        self._include_cursor = True
 
     def prepare(self) -> None:
         """Build the overlay window ahead of the first run().
@@ -208,17 +209,18 @@ class AreaSelector:
         if self._window is None:
             self._setup_window()
 
-    def run(self) -> SelectionResult | None:
+    def run(self, *, include_cursor: bool = True) -> SelectionResult | None:
         import os
         import tempfile
         import mss
         from PIL import Image
 
+        self._include_cursor = include_cursor
         self._run_started_at = now()
         self._first_draw_logged = False
         self._draw_count = 0
         self._motion_flush_count = 0
-        log_event(logger, "selector_started")
+        log_event(logger, "selector_started", include_cursor=include_cursor)
 
         # Capture screenshot first (before touching the GTK window).
         # On Wayland, mss (X11 XGetImage) cannot read the compositor framebuffer,
@@ -240,11 +242,17 @@ class AreaSelector:
             fd, tmp = tempfile.mkstemp(suffix=".png")
             os.close(fd)
             screenshot_path = Path(tmp)
-            with mss.mss() as sct:
+            with mss.mss(with_cursor=include_cursor) as sct:
                 raw = sct.grab(sct.monitors[0])
                 img = Image.frombytes("RGB", raw.size, raw.rgb)
             img.save(screenshot_path, format="PNG", compress_level=0)
-            log_duration(logger, "selector_background_captured", capture_started_at, path=screenshot_path)
+            log_duration(
+                logger,
+                "selector_background_captured",
+                capture_started_at,
+                path=screenshot_path,
+                include_cursor=include_cursor,
+            )
 
             pixbuf_started_at = now()
             img_bytes = self._GLib.Bytes.new(img.tobytes())
@@ -646,7 +654,7 @@ class AreaSelector:
         try:
             options = dbus.Dictionary(
                 {
-                    "include-cursor": dbus.Boolean(False),
+                    "include-cursor": dbus.Boolean(self._include_cursor),
                     "native-resolution": dbus.Boolean(True),
                 },
                 signature="sv",
@@ -689,6 +697,7 @@ class AreaSelector:
         log_duration(
             logger, "selector_background_captured", capture_started_at,
             path=screenshot_path, backend="kwin",
+            include_cursor=self._include_cursor,
         )
 
         pixbuf_started_at = now()
@@ -756,6 +765,8 @@ class AreaSelector:
             {
                 "handle_token": dbus.String(token),
                 "interactive": dbus.Boolean(False),
+                # Portal Screenshot API (version ≥ 2): include mouse pointer.
+                "cursor": dbus.Boolean(self._include_cursor),
             },
             signature="sv",
         )

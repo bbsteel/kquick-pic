@@ -22,6 +22,8 @@ class AppConfig:
     icon_theme: str = "v1"
     autostart: bool = False
     language: str = field(default_factory=current_language)
+    # Include the mouse cursor in the freeze-frame capture.
+    include_cursor: bool = True
 
     def resolved_save_path(self) -> Path:
         return Path(self.save_path).expanduser().resolve()
@@ -49,6 +51,7 @@ class ConfigManager:
             icon_theme=data.get("icon_theme", AppConfig.icon_theme),
             autostart=data.get("autostart", AppConfig.autostart),
             language=data.get("language", current_language()),
+            include_cursor=bool(data.get("include_cursor", AppConfig.include_cursor)),
         )
 
         if config.icon_theme not in VALID_ICON_THEMES:
@@ -89,4 +92,3 @@ class ConfigManager:
             logger.warning(f"Invalid hotkey string '{config.hotkey}'")
             return False
         return True
-from quick_pic.i18n import available_languages, current_language

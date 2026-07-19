@@ -18,6 +18,8 @@
     "settings.hotkey_placeholder": "点击这里后按下按键...",
     "settings.autostart": "自启动：",
     "settings.autostart_label": "登录后自动启动",
+    "settings.include_cursor": "鼠标指针：",
+    "settings.include_cursor_label": "截图时包含鼠标指针",
     "settings.cancel": "取消",
     "settings.save": "保存",
     "settings.select_save_directory": "选择保存目录",

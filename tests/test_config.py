@@ -15,6 +15,7 @@ class TestAppConfig:
         assert cfg.hotkey == "<ctrl>+<shift>+p"
         assert cfg.icon_theme == "v1"
         assert cfg.autostart is False
+        assert cfg.include_cursor is True
 
     def test_resolved_save_path(self):
         cfg = AppConfig(save_path="~/test-dir")
@@ -28,11 +29,13 @@ class TestAppConfig:
             hotkey="<ctrl>+q",
             icon_theme="v2",
             autostart=True,
+            include_cursor=False,
         )
         assert cfg.format == "jpg"
         assert cfg.hotkey == "<ctrl>+q"
         assert cfg.icon_theme == "v2"
         assert cfg.autostart is True
+        assert cfg.include_cursor is False
 
 
 class TestConfigManager:
@@ -55,6 +58,7 @@ class TestConfigManager:
                 "icon_theme": "v2",
                 "autostart": True,
                 "language": "en",
+                "include_cursor": False,
             }
             path.write_text(json.dumps(data))
             mgr = ConfigManager(config_path=path)
@@ -64,6 +68,7 @@ class TestConfigManager:
             assert cfg.hotkey == "<ctrl>+q"
             assert cfg.icon_theme == "v2"
             assert cfg.autostart is True
+            assert cfg.include_cursor is False
 
     def test_load_corrupt_json_falls_back_to_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,6 +113,7 @@ class TestConfigManager:
                 hotkey="<alt>+<shift>+s",
                 icon_theme="v2",
                 autostart=True,
+                include_cursor=False,
             )
             mgr.save(original)
             loaded = mgr.load()
@@ -116,6 +122,7 @@ class TestConfigManager:
             assert loaded.hotkey == original.hotkey
             assert loaded.icon_theme == original.icon_theme
             assert loaded.autostart == original.autostart
+            assert loaded.include_cursor is False
 
     def test_save_creates_parent_directories(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -141,3 +148,4 @@ class TestConfigManager:
             assert cfg.format == "jpg"
             assert cfg.save_path == "~/Pictures/quick-pic"
             assert cfg.hotkey == "<ctrl>+<shift>+p"
+            assert cfg.include_cursor is True
