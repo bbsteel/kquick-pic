@@ -847,13 +847,21 @@ class AreaSelector:
             self._first_draw_logged = True
             log_duration(logger, "selector_first_draw", self._run_started_at)
 
-        # Single DrawingArea paints the entire overlay: dim mask outside
-        # the selection, the screenshot itself inside it, then border /
-        # handles / annotations. CLEAR the invalid region first so old
-        # mask pixels don't ghost when the selection grows or moves —
-        # requires the window to be on an ARGB visual, otherwise CLEAR
-        # writes opaque black and we degrade to redrawing without
-        # clearing (ghosting may reappear).
+        # Single DrawingArea paints the entire overlay: frozen screenshot,
+        # dim mask outside the selection, then border / handles /
+        # annotations. CLEAR the invalid region first so old mask pixels
+        # don't ghost when the selection grows or moves — requires the
+        # window to be on an ARGB visual, otherwise CLEAR writes opaque
+        # black and we degrade to redrawing without clearing (ghosting
+        # may reappear).
+        #
+        # CRITICAL: always re-paint the freeze frame after CLEAR. CLEAR
+        # erases sibling Gtk.Image pixels on the shared window surface.
+        # If we only paint a semi-transparent dim, the ARGB window becomes
+        # a see-through veil over the *live* desktop — which has already
+        # lost popups, dropdowns, hover, and selection after our overlay
+        # stole focus. The frame captured *before* show_all is the only
+        # correct backdrop (open menus, text highlights, etc.).
         if self._rgba_available:
             cr.set_operator(cairo.OPERATOR_CLEAR)
             cr.paint()
@@ -862,10 +870,16 @@ class AreaSelector:
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
 
+        if self._background_pixbuf is not None:
+            self._Gdk.cairo_set_source_pixbuf(
+                cr, self._background_pixbuf, 0, 0
+            )
+            cr.paint()
+
         active_rect = self._active_selection_rect_for_draw()
 
         if active_rect is None:
-            # No selection yet: dim the whole screen.
+            # No selection yet: dim the whole frozen frame.
             cr.set_source_rgba(0, 0, 0, 0.45)
             cr.rectangle(0, 0, w, h)
             cr.fill()
@@ -883,19 +897,10 @@ class AreaSelector:
 
         x, y, rw, rh = active_rect
 
-        # Re-paint the screenshot inside the selection. With RGBA the CLEAR
-        # above erased both the mask AND the underlying image pixels in
-        # this region, so we have to put the image back for it to be
-        # visible. Without RGBA the image is still there from the initial
-        # paint, but this is cheap enough to do unconditionally.
-        if self._background_pixbuf is not None:
-            self._Gdk.cairo_set_source_pixbuf(
-                cr, self._background_pixbuf, 0, 0
-            )
-            cr.rectangle(x, y, rw, rh)
-            cr.fill()
-
-        # Dim mask in the four bands around the selection.
+        # Dim mask in the four bands around the selection. The freeze
+        # frame was painted full-window above; the selection interior
+        # stays undimmed so the user sees the captured content at full
+        # brightness.
         cr.set_source_rgba(0, 0, 0, 0.45)
         cr.rectangle(0, 0, w, y)
         cr.fill()
