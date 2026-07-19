@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,22 @@ _QT_NAMED_KEYS = {
 for _i in range(1, 25):
     _QT_NAMED_KEYS[f"f{_i}"] = 0x01000030 + _i - 1
 
-_ACTION_ID = ["quick-pic", "take-screenshot", "Quick Pic", "Take Screenshot"]
+_COMPONENT = "quick-pic"
+
+
+@dataclass(frozen=True)
+class HotkeyBinding:
+    """One global shortcut: KGlobalAccel action id + pynput hotkey string."""
+
+    action_id: str
+    hotkey: str
+    callback: Callable[[], None]
+    title: str
+    description: str
+
+    @property
+    def action_path(self) -> list[str]:
+        return [_COMPONENT, self.action_id, self.title, self.description]
 
 
 def _pynput_to_qt_keycode(hotkey_str: str) -> int:
@@ -70,13 +87,17 @@ def _pynput_to_qt_keycode(hotkey_str: str) -> int:
 
 
 class HotkeyManager:
+    """Register one or more global hotkeys (KGlobalAccel, pynput fallback)."""
 
-    def __init__(self, hotkey_str: str, callback):
-        self._hotkey_str = hotkey_str
-        self._callback = callback
+    def __init__(self, bindings: list[HotkeyBinding]):
+        if not bindings:
+            raise ValueError("HotkeyManager requires at least one binding")
+        self._bindings = list(bindings)
+        self._callbacks = {b.action_id: b.callback for b in bindings}
         self._listener = None
         self._kga = None
         self._signal_match = None
+        self._registered_actions: list[list[str]] = []
 
     def start(self) -> None:
         if self._start_kglobalaccel():
@@ -88,11 +109,17 @@ class HotkeyManager:
             self._signal_match.remove()
             self._signal_match = None
         if self._kga is not None:
-            try:
-                self._kga.setInactive(_ACTION_ID)
-            except Exception:
-                logger.warning("Failed to deactivate KGlobalAccel shortcut", exc_info=True)
+            for action in self._registered_actions:
+                try:
+                    self._kga.setInactive(action)
+                except Exception:
+                    logger.warning(
+                        "Failed to deactivate KGlobalAccel shortcut %s",
+                        action,
+                        exc_info=True,
+                    )
             self._kga = None
+            self._registered_actions = []
             logger.info("Hotkey listener stopped (KGlobalAccel)")
         if self._listener is not None:
             self._listener.stop()
@@ -104,7 +131,6 @@ class HotkeyManager:
             import dbus
             from dbus.mainloop.glib import DBusGMainLoop
 
-            qt_key = _pynput_to_qt_keycode(self._hotkey_str)
             DBusGMainLoop(set_as_default=True)
             bus = dbus.SessionBus()
             if not bus.name_has_owner("org.kde.kglobalaccel"):
@@ -113,47 +139,56 @@ class HotkeyManager:
                 bus.get_object("org.kde.kglobalaccel", "/kglobalaccel"),
                 "org.kde.KGlobalAccel",
             )
-            kga.doRegister(_ACTION_ID)
 
-            # The configured hotkey is authoritative: if another component
-            # holds the key (e.g. the launcher widget's stale Alt+F1
-            # binding), unbind it first — registration is rejected on
-            # conflict otherwise. Plasma may re-claim it at re-login; we
-            # steal it back on every start, logged.
-            holder = [str(s) for s in kga.action(dbus.Int32(qt_key))]
-            if holder and holder[:2] != _ACTION_ID[:2]:
+            registered: list[list[str]] = []
+            for binding in self._bindings:
+                qt_key = _pynput_to_qt_keycode(binding.hotkey)
+                action = binding.action_path
+                kga.doRegister(action)
+
+                # The configured hotkey is authoritative: if another component
+                # holds the key, unbind it first — registration is rejected on
+                # conflict otherwise.
+                holder = [str(s) for s in kga.action(dbus.Int32(qt_key))]
+                if holder and holder[:2] != action[:2]:
+                    logger.info(
+                        f"Hotkey {binding.hotkey} is bound to {holder}; unbinding it"
+                    )
+                    kga.setForeignShortcut(holder, dbus.Array([], signature="i"))
+
+                # Flags: SetPresent(2) | NoAutoloading(4)
+                applied = [
+                    int(k)
+                    for k in kga.setShortcut(
+                        action, [dbus.Int32(qt_key)], dbus.UInt32(6)
+                    )
+                ]
+                if qt_key not in applied:
+                    logger.warning(
+                        f"KGlobalAccel rejected hotkey {binding.hotkey} "
+                        f"for {binding.action_id} (applied={applied}); "
+                        f"falling back to pynput"
+                    )
+                    for done in registered:
+                        try:
+                            kga.setInactive(done)
+                        except Exception:
+                            pass
+                    return False
+                registered.append(action)
                 logger.info(
-                    f"Hotkey {self._hotkey_str} is bound to {holder}; unbinding it"
+                    f"Hotkey registered via KGlobalAccel: {binding.hotkey} "
+                    f"action={binding.action_id} (qt=0x{qt_key:08x})"
                 )
-                kga.setForeignShortcut(holder, dbus.Array([], signature="i"))
 
-            # Flags: SetPresent(2) — activate now; NoAutoloading(4) — apply
-            # exactly this key instead of any value persisted from earlier
-            # runs (config.json is the source of truth for the hotkey).
-            applied = [
-                int(k)
-                for k in kga.setShortcut(
-                    _ACTION_ID, [dbus.Int32(qt_key)], dbus.UInt32(6)
-                )
-            ]
-            if qt_key not in applied:
-                logger.warning(
-                    f"KGlobalAccel rejected hotkey {self._hotkey_str} "
-                    f"(applied={applied}); falling back to pynput"
-                )
-                kga.setInactive(_ACTION_ID)
-                return False
             self._kga = kga
+            self._registered_actions = registered
             self._signal_match = bus.add_signal_receiver(
                 self._on_global_shortcut_pressed,
                 "globalShortcutPressed",
                 "org.kde.kglobalaccel.Component",
                 "org.kde.kglobalaccel",
-                arg0=_ACTION_ID[0],
-            )
-            logger.info(
-                f"Hotkey registered via KGlobalAccel: {self._hotkey_str} "
-                f"(qt=0x{qt_key:08x})"
+                arg0=_COMPONENT,
             )
             return True
         except Exception:
@@ -164,17 +199,22 @@ class HotkeyManager:
             return False
 
     def _on_global_shortcut_pressed(self, component, action, timestamp):
-        if str(action) == _ACTION_ID[1]:
-            self._callback()
+        callback = self._callbacks.get(str(action))
+        if callback is not None:
+            callback()
 
     def _start_pynput(self) -> None:
         try:
             from pynput import keyboard
 
-            self._listener = keyboard.GlobalHotKeys({
-                self._hotkey_str: self._callback,
-            })
+            mapping = {b.hotkey: b.callback for b in self._bindings}
+            self._listener = keyboard.GlobalHotKeys(mapping)
             self._listener.start()
-            logger.info(f"Hotkey listener started: {self._hotkey_str}")
+            logger.info(
+                "Hotkey listener started (pynput): %s",
+                ", ".join(f"{b.action_id}={b.hotkey}" for b in self._bindings),
+            )
         except Exception:
-            logger.exception("Failed to start hotkey listener (XRecord may be unavailable)")
+            logger.exception(
+                "Failed to start hotkey listener (XRecord may be unavailable)"
+            )

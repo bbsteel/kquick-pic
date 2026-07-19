@@ -1,5 +1,12 @@
 import logging
-from quick_pic.config import AppConfig, VALID_FORMATS, VALID_ICON_THEMES
+from quick_pic.config import (
+    AppConfig,
+    HISTORY_COUNT_DEFAULT,
+    HISTORY_COUNT_MAX,
+    HISTORY_COUNT_MIN,
+    VALID_FORMATS,
+    VALID_ICON_THEMES,
+)
 from quick_pic.i18n import available_languages, current_language, set_language, t
 from quick_pic.icon import get_icon_path, get_icon_theme_label
 
@@ -122,6 +129,12 @@ class SettingsDialog:
         language_box.pack_start(self._language_combo, True, True, 0)
         content.add(language_box)
 
+        # Shared hotkey-recording state (screenshot + history entries).
+        self._recording_entry = None
+        self._pressed_keys: set[str] = set()
+        self._hk_raw = config.hotkey
+        self._history_hk_raw = config.history_hotkey
+
         # -- Hotkey row --
         hk_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._hk_label = Gtk.Label(label=t("settings.hotkey"))
@@ -130,16 +143,43 @@ class SettingsDialog:
         self._hk_entry = Gtk.Entry()
         self._hk_entry.set_text(self._format_hotkey_display(config.hotkey))
         self._hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
-        self._hk_entry.connect("focus-in-event", self._on_hotkey_focus_in)
-        self._hk_entry.connect("focus-out-event", self._on_hotkey_focus_out)
-        self._hk_entry.connect("key-press-event", self._on_hotkey_key_press)
-        self._hk_entry.connect("key-release-event", self._on_hotkey_key_release)
-        self._recording = False
-        self._pressed_keys: set[str] = set()
-        self._hk_raw = config.hotkey
+        self._wire_hotkey_entry(self._hk_entry, "screenshot")
         hk_box.pack_start(self._hk_label, False, False, 0)
         hk_box.pack_start(self._hk_entry, True, True, 0)
         content.add(hk_box)
+
+        # -- History hotkey row --
+        hist_hk_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._history_hk_label = Gtk.Label(label=t("settings.history_hotkey"))
+        self._history_hk_label.set_xalign(0)
+        self._history_hk_label.set_width_chars(10)
+        self._history_hk_entry = Gtk.Entry()
+        self._history_hk_entry.set_text(self._format_hotkey_display(config.history_hotkey))
+        self._history_hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
+        self._wire_hotkey_entry(self._history_hk_entry, "history")
+        hist_hk_box.pack_start(self._history_hk_label, False, False, 0)
+        hist_hk_box.pack_start(self._history_hk_entry, True, True, 0)
+        content.add(hist_hk_box)
+
+        # -- History count row --
+        hist_count_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._history_count_label = Gtk.Label(label=t("settings.history_count"))
+        self._history_count_label.set_xalign(0)
+        self._history_count_label.set_width_chars(10)
+        adjustment = Gtk.Adjustment(
+            value=config.history_count,
+            lower=HISTORY_COUNT_MIN,
+            upper=HISTORY_COUNT_MAX,
+            step_increment=1,
+            page_increment=1,
+            page_size=0,
+        )
+        self._history_count_spin = Gtk.SpinButton(adjustment=adjustment, climb_rate=1, digits=0)
+        self._history_count_spin.set_numeric(True)
+        self._history_count_spin.set_value(config.history_count)
+        hist_count_box.pack_start(self._history_count_label, False, False, 0)
+        hist_count_box.pack_start(self._history_count_spin, True, True, 0)
+        content.add(hist_count_box)
 
         # -- Autostart row --
         autostart_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -170,6 +210,12 @@ class SettingsDialog:
 
         content.show_all()
 
+    def _wire_hotkey_entry(self, entry, which: str) -> None:
+        entry.connect("focus-in-event", self._on_hotkey_focus_in, which)
+        entry.connect("focus-out-event", self._on_hotkey_focus_out, which)
+        entry.connect("key-press-event", self._on_hotkey_key_press, which)
+        entry.connect("key-release-event", self._on_hotkey_key_release, which)
+
     def run(self) -> AppConfig | None:
         self._dialog.show()
         resp = self._dialog.run()
@@ -194,56 +240,61 @@ class SettingsDialog:
             self._path_entry.set_text(chooser.get_filename())
         chooser.destroy()
 
-    def _on_hotkey_focus_in(self, widget, event) -> bool:
-        self._recording = True
+    def _on_hotkey_focus_in(self, widget, event, which: str) -> bool:
+        self._recording_entry = which
         self._pressed_keys.clear()
-        # Visual hint: change background
         css = b"entry { background: #e6f0ff; }"
-        self._apply_entry_css(self._hk_entry, css)
+        self._apply_entry_css(widget, css)
         return False
 
-    def _on_hotkey_focus_out(self, widget, event) -> bool:
-        self._recording = False
+    def _on_hotkey_focus_out(self, widget, event, which: str) -> bool:
+        if self._recording_entry == which:
+            self._recording_entry = None
         self._pressed_keys.clear()
-        self._apply_entry_css(self._hk_entry, b"entry { background: none; }")
+        self._apply_entry_css(widget, b"entry { background: none; }")
         return False
 
-    def _on_hotkey_key_press(self, widget, event) -> bool:
-        if not self._recording:
+    def _on_hotkey_key_press(self, widget, event, which: str) -> bool:
+        if self._recording_entry != which:
             return False
         key_name = self._gtk_key_to_name(event)
         if key_name:
             self._pressed_keys.add(key_name)
-            self._update_hotkey_display()
+            self._update_hotkey_display(which, widget)
         return True  # stop propagation
 
-    def _on_hotkey_key_release(self, widget, event) -> bool:
-        if not self._recording:
+    def _on_hotkey_key_release(self, widget, event, which: str) -> bool:
+        if self._recording_entry != which:
             return False
-        # When all keys are released, finalize
         key_name = self._gtk_key_to_name(event)
         if key_name and key_name in self._pressed_keys:
             self._pressed_keys.discard(key_name)
-        if not self._pressed_keys and self._hk_raw:
-            self._hk_entry.set_text(self._format_hotkey_display(self._hk_raw))
-            self._hk_entry.get_toplevel().child_focus(self._Gtk.DirectionType.TAB_FOCUS)
+        raw = self._hk_raw if which == "screenshot" else self._history_hk_raw
+        if not self._pressed_keys and raw:
+            widget.set_text(self._format_hotkey_display(raw))
+            widget.get_toplevel().child_focus(self._Gtk.DirectionType.TAB_FOCUS)
         return True
 
-    def _update_hotkey_display(self) -> None:
+    def _update_hotkey_display(self, which: str, widget) -> None:
         if not self._pressed_keys:
             return
-        parts = []
-        # Sort: modifiers first, then regular keys
         mods = sorted([k for k in self._pressed_keys if k in ("ctrl", "alt", "shift", "cmd")])
         keys = sorted([k for k in self._pressed_keys if k not in ("ctrl", "alt", "shift", "cmd")])
         parts = mods + keys
-        self._hk_raw = "+".join(f"<{p}>" for p in parts)
-        self._hk_entry.set_text("+".join(parts))
+        raw = "+".join(f"<{p}>" for p in parts)
+        if which == "screenshot":
+            self._hk_raw = raw
+        else:
+            self._history_hk_raw = raw
+        widget.set_text("+".join(parts))
 
     # -- Helpers --
 
     def _on_response(self, dialog, response_id) -> None:
         if response_id == self._Gtk.ResponseType.OK:
+            count = int(self._history_count_spin.get_value())
+            if count < HISTORY_COUNT_MIN or count > HISTORY_COUNT_MAX:
+                count = HISTORY_COUNT_DEFAULT
             self._result = AppConfig(
                 save_path=self._path_entry.get_text(),
                 format=VALID_FORMATS[self._fmt_combo.get_active()].lower(),
@@ -252,6 +303,8 @@ class SettingsDialog:
                 autostart=self._autostart_check.get_active(),
                 language=self._language_store[self._language_combo.get_active_iter()][1],
                 include_cursor=self._cursor_check.get_active(),
+                history_hotkey=self._history_hk_raw,
+                history_count=count,
             )
         else:
             set_language(self._initial_language)
@@ -279,6 +332,9 @@ class SettingsDialog:
         self._language_label.set_text(t("settings.language"))
         self._hk_label.set_text(t("settings.hotkey"))
         self._hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
+        self._history_hk_label.set_text(t("settings.history_hotkey"))
+        self._history_hk_entry.set_placeholder_text(t("settings.hotkey_placeholder"))
+        self._history_count_label.set_text(t("settings.history_count"))
         self._autostart_label.set_text(t("settings.autostart"))
         self._autostart_check.set_label(t("settings.autostart_label"))
         self._cursor_label.set_text(t("settings.include_cursor"))

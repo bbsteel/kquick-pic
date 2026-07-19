@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from quick_pic.config import AppConfig, ConfigManager, VALID_FORMATS, VALID_ICON_THEMES
+from quick_pic.config import (
+    AppConfig,
+    ConfigManager,
+    HISTORY_COUNT_DEFAULT,
+    VALID_FORMATS,
+    VALID_ICON_THEMES,
+)
 
 
 class TestAppConfig:
@@ -16,6 +22,8 @@ class TestAppConfig:
         assert cfg.icon_theme == "v1"
         assert cfg.autostart is False
         assert cfg.include_cursor is True
+        assert cfg.history_hotkey == "<ctrl>+<shift>+h"
+        assert cfg.history_count == HISTORY_COUNT_DEFAULT
 
     def test_resolved_save_path(self):
         cfg = AppConfig(save_path="~/test-dir")
@@ -30,12 +38,16 @@ class TestAppConfig:
             icon_theme="v2",
             autostart=True,
             include_cursor=False,
+            history_hotkey="<alt>+h",
+            history_count=8,
         )
         assert cfg.format == "jpg"
         assert cfg.hotkey == "<ctrl>+q"
         assert cfg.icon_theme == "v2"
         assert cfg.autostart is True
         assert cfg.include_cursor is False
+        assert cfg.history_hotkey == "<alt>+h"
+        assert cfg.history_count == 8
 
 
 class TestConfigManager:
@@ -59,6 +71,8 @@ class TestConfigManager:
                 "autostart": True,
                 "language": "en",
                 "include_cursor": False,
+                "history_hotkey": "<alt>+h",
+                "history_count": 3,
             }
             path.write_text(json.dumps(data))
             mgr = ConfigManager(config_path=path)
@@ -69,6 +83,8 @@ class TestConfigManager:
             assert cfg.icon_theme == "v2"
             assert cfg.autostart is True
             assert cfg.include_cursor is False
+            assert cfg.history_hotkey == "<alt>+h"
+            assert cfg.history_count == 3
 
     def test_load_corrupt_json_falls_back_to_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,6 +130,8 @@ class TestConfigManager:
                 icon_theme="v2",
                 autostart=True,
                 include_cursor=False,
+                history_hotkey="<ctrl>+h",
+                history_count=10,
             )
             mgr.save(original)
             loaded = mgr.load()
@@ -123,6 +141,8 @@ class TestConfigManager:
             assert loaded.icon_theme == original.icon_theme
             assert loaded.autostart == original.autostart
             assert loaded.include_cursor is False
+            assert loaded.history_hotkey == original.history_hotkey
+            assert loaded.history_count == original.history_count
 
     def test_save_creates_parent_directories(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -149,3 +169,13 @@ class TestConfigManager:
             assert cfg.save_path == "~/Pictures/quick-pic"
             assert cfg.hotkey == "<ctrl>+<shift>+p"
             assert cfg.include_cursor is True
+            assert cfg.history_hotkey == "<ctrl>+<shift>+h"
+            assert cfg.history_count == HISTORY_COUNT_DEFAULT
+
+    def test_load_invalid_history_count_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text(json.dumps({"history_count": 99, "hotkey": "<ctrl>+a", "history_hotkey": "<ctrl>+b"}))
+            mgr = ConfigManager(config_path=path)
+            cfg = mgr.load()
+            assert cfg.history_count == HISTORY_COUNT_DEFAULT

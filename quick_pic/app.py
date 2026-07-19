@@ -9,7 +9,7 @@ from quick_pic.timing import log_duration, log_event, now
 from quick_pic.autostart import AutoStartManager
 from quick_pic.clipboard import ClipboardManager
 from quick_pic.config import AppConfig, ConfigManager
-from quick_pic.hotkey import HotkeyManager
+from quick_pic.hotkey import HotkeyBinding, HotkeyManager
 from quick_pic.i18n import set_language, t
 from quick_pic.screenshot import ScreenshotCapture
 from quick_pic.tray import TrayManager
@@ -29,6 +29,7 @@ class QuickPicApp:
         self._tray_manager: TrayManager | None = None
         self._area_selector = None
         self._screenshot_in_progress = False
+        self._history_in_progress = False
 
     def run(self) -> None:
         started_at = now()
@@ -48,11 +49,7 @@ class QuickPicApp:
             config=self._config,
         )
 
-        self._hotkey_manager = HotkeyManager(
-            hotkey_str=self._config.hotkey,
-            callback=self._on_screenshot_triggered,
-        )
-        self._hotkey_manager.start()
+        self._start_hotkeys()
 
         log_duration(
             logger,
@@ -60,6 +57,8 @@ class QuickPicApp:
             started_at,
             pid=os.getpid(),
             hotkey=self._config.hotkey,
+            history_hotkey=self._config.history_hotkey,
+            history_count=self._config.history_count,
             save_path=self._config.resolved_save_path(),
             format=self._config.format,
         )
@@ -67,6 +66,30 @@ class QuickPicApp:
         # construction cost. The window itself stays unmapped until a capture.
         GLib.idle_add(self._prepare_area_selector)
         self._tray_manager.start()
+
+    def _start_hotkeys(self) -> None:
+        if self._hotkey_manager:
+            self._hotkey_manager.stop()
+            self._hotkey_manager = None
+        assert self._config is not None
+        bindings = [
+            HotkeyBinding(
+                action_id="take-screenshot",
+                hotkey=self._config.hotkey,
+                callback=self._on_screenshot_triggered,
+                title="Quick Pic",
+                description="Take Screenshot",
+            ),
+            HotkeyBinding(
+                action_id="show-history",
+                hotkey=self._config.history_hotkey,
+                callback=self._on_history_triggered,
+                title="Quick Pic",
+                description="Show Recent Screenshots",
+            ),
+        ]
+        self._hotkey_manager = HotkeyManager(bindings)
+        self._hotkey_manager.start()
 
     def _prepare_area_selector(self) -> bool:
         try:
@@ -114,7 +137,7 @@ class QuickPicApp:
         # run() blocks in a nested Gtk.main, which still dispatches idle
         # callbacks — a second trigger would re-enter run() and corrupt the
         # in-progress selection, so drop it here.
-        if self._screenshot_in_progress:
+        if self._screenshot_in_progress or self._history_in_progress:
             log_event(logger, "screenshot_ignored_busy", source=source)
             return False
         self._screenshot_in_progress = True
@@ -162,6 +185,58 @@ class QuickPicApp:
             self._screenshot_in_progress = False
         return False
 
+    def _on_history_triggered(self, *_args) -> None:
+        log_event(logger, "history_triggered")
+        GLib.idle_add(self._do_history)
+
+    def _do_history(self) -> bool:
+        """Show recent screenshots; left-click copies path to clipboard."""
+        if self._screenshot_in_progress or self._history_in_progress:
+            log_event(logger, "history_ignored_busy")
+            return False
+        assert self._config is not None
+        self._history_in_progress = True
+        try:
+            from quick_pic.history import list_recent_screenshots
+            from quick_pic.history_picker import HistoryPicker
+
+            paths = list_recent_screenshots(
+                self._config.resolved_save_path(),
+                self._config.history_count,
+            )
+            log_event(
+                logger,
+                "history_listed",
+                count=len(paths),
+                limit=self._config.history_count,
+                save_path=self._config.resolved_save_path(),
+            )
+            if not paths:
+                if self._tray_manager:
+                    self._tray_manager.notify(
+                        t("notify.app_name"),
+                        t("notify.history_empty"),
+                    )
+                return False
+
+            picker = HistoryPicker()
+            selected = picker.run(paths)
+            if selected is None:
+                log_event(logger, "history_cancelled")
+                return False
+            ClipboardManager.set_path(str(selected))
+            log_event(logger, "history_path_copied", path=selected)
+        except Exception:
+            logger.exception("History picker failed")
+            if self._tray_manager:
+                self._tray_manager.notify(
+                    t("notify.app_name"),
+                    t("notify.history_failed"),
+                )
+        finally:
+            self._history_in_progress = False
+        return False
+
     def _cleanup_stale_temp_screenshots(self) -> None:
         try:
             stale = [Path(p) for p in glob.glob("/tmp/tmp*.png")]
@@ -182,6 +257,7 @@ class QuickPicApp:
             return
 
         old_hotkey = self._config.hotkey
+        old_history_hotkey = self._config.history_hotkey
         old_icon_theme = self._config.icon_theme
         old_language = self._config.language
         self._config = result
@@ -195,15 +271,15 @@ class QuickPicApp:
         if result.language != old_language:
             self._tray_manager.update_language()
 
-        if result.hotkey != old_hotkey:
-            logger.info(f"Hotkey changed, restarting listener with: {result.hotkey}")
-            if self._hotkey_manager:
-                self._hotkey_manager.stop()
-            self._hotkey_manager = HotkeyManager(
-                hotkey_str=result.hotkey,
-                callback=self._on_screenshot_triggered,
+        if (
+            result.hotkey != old_hotkey
+            or result.history_hotkey != old_history_hotkey
+        ):
+            logger.info(
+                "Hotkeys changed, restarting listener: "
+                f"screenshot={result.hotkey} history={result.history_hotkey}"
             )
-            self._hotkey_manager.start()
+            self._start_hotkeys()
 
     def _on_quit(self, widget) -> None:
         self.shutdown()
