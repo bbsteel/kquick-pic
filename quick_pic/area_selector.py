@@ -67,14 +67,23 @@ TOOLBAR_CSS = b"""
         color: inherit;
         text-shadow: none;
     }
-    .qp-toolbutton.confirm {
+    .qp-toolbutton.save, .qp-toolbutton.confirm {
         background-color: #059669;
         color: #ffffff;
         padding: 4px 8px;
         min-height: 52px;
     }
-    .qp-toolbutton.confirm:hover {
+    .qp-toolbutton.save:hover, .qp-toolbutton.confirm:hover {
         background-color: #047857;
+    }
+    .qp-toolbutton.pin {
+        background-color: #2563eb;
+        color: #ffffff;
+        padding: 4px 8px;
+        min-height: 52px;
+    }
+    .qp-toolbutton.pin:hover {
+        background-color: #1d4ed8;
     }
     .qp-toolbutton.cancel {
         background-color: rgba(239, 68, 68, 0.10);
@@ -120,7 +129,7 @@ class AreaSelector:
     Press Escape or right-click to cancel. Left-drag to select.
     After a selection exists (no annotation tool active): drag the interior
     to move, or drag edge/corner handles to resize; drag far outside to
-    reselect. Double-click inside confirms.
+    reselect. Double-click inside saves.
     """
 
     _TEXT_FONT = "Sans 20"
@@ -149,6 +158,7 @@ class AreaSelector:
         self._Pango = Pango
         self._PangoCairo = PangoCairo
         self._result: tuple[int, int, int, int] | None = None
+        self._result_pin = False
         self._start_x = 0.0
         self._start_y = 0.0
         self._end_x = 0.0
@@ -288,6 +298,7 @@ class AreaSelector:
 
         # Reset all per-invocation state.
         self._result = None
+        self._result_pin = False
         self._start_x = self._start_y = self._end_x = self._end_y = 0.0
         self._dragging = False
         self._motion_pending = False
@@ -354,11 +365,13 @@ class AreaSelector:
             result="selected",
             rect=self._result,
             annotations=len(self._annotations),
+            pin=self._result_pin,
         )
         return SelectionResult(
             rect=self._result,
             screenshot_path=screenshot_path,
             annotations=list(self._annotations),
+            pin=self._result_pin,
         )
 
     def _setup_window(self) -> None:
@@ -496,9 +509,11 @@ class AreaSelector:
             "color", "selector.choose_color", toggle=False, color_provider=self._selected_color
         )
         undo_button, undo_button_icon = _make_tool_button("undo", "selector.undo", toggle=False)
-        confirm_button, confirm_button_icon = _make_tool_button("confirm", "selector.confirm", toggle=False)
+        pin_button, pin_button_icon = _make_tool_button("pin", "selector.pin", toggle=False)
+        save_button, save_button_icon = _make_tool_button("save", "selector.save", toggle=False)
         cancel_button, cancel_button_icon = _make_tool_button("cancel", "selector.cancel", toggle=False)
-        confirm_button.get_style_context().add_class("confirm")
+        pin_button.get_style_context().add_class("pin")
+        save_button.get_style_context().add_class("save")
         cancel_button.get_style_context().add_class("cancel")
 
         box_button.connect("toggled", self._on_tool_toggled, "box")
@@ -508,7 +523,8 @@ class AreaSelector:
         number_button.connect("toggled", self._on_tool_toggled, "number")
         color_picker_button.connect("clicked", self._toggle_color_palette)
         undo_button.connect("clicked", self._on_undo)
-        confirm_button.connect("clicked", self._on_confirm)
+        pin_button.connect("clicked", self._on_pin)
+        save_button.connect("clicked", self._on_save)
         cancel_button.connect("clicked", self._on_cancel)
 
         def _toggle_active_class(button, icon_widget):
@@ -534,15 +550,15 @@ class AreaSelector:
         for button in (color_picker_button, undo_button):
             action_group.pack_start(button, False, False, 0)
 
-        confirm_group = _make_tool_group()
-        for button in (confirm_button, cancel_button):
-            confirm_group.pack_start(button, False, False, 0)
+        finish_group = _make_tool_group()
+        for button in (pin_button, save_button, cancel_button):
+            finish_group.pack_start(button, False, False, 0)
 
         toolbar.pack_start(drawing_group, False, False, 0)
         toolbar.pack_start(_make_separator(), False, False, 0)
         toolbar.pack_start(action_group, False, False, 0)
         toolbar.pack_start(_make_separator(), False, False, 0)
-        toolbar.pack_start(confirm_group, False, False, 0)
+        toolbar.pack_start(finish_group, False, False, 0)
 
         toolbar_frame.add(toolbar)
         container.put(toolbar_frame, 16, 16)
@@ -978,7 +994,7 @@ class AreaSelector:
             and self._can_edit_selection()
             and self._point_in_selection(event.x, event.y)
         ):
-            self._on_confirm(None)
+            self._on_save(None)
             return True
         if event.button == 1 and self._selection_rect is None:
             self._begin_selection_drag(event, reselecting=False)
@@ -1222,12 +1238,26 @@ class AreaSelector:
                 self._hide_text_editor()
             self._set_active_tool(None)
 
-    def _on_confirm(self, button) -> None:
+    def _on_save(self, button) -> None:
+        self._finish_selection(pin=False)
+
+    def _on_pin(self, button) -> None:
+        self._finish_selection(pin=True)
+
+    def _finish_selection(self, *, pin: bool) -> None:
         if not self._in_run or self._selection_rect is None:
             return
         self._commit_text_entry()
         self._result = self._selection_rect
-        log_event(logger, "selector_confirmed", rect=self._selection_rect, annotations=len(self._annotations))
+        self._result_pin = pin
+        log_event(
+            logger,
+            "selector_finished_action",
+            rect=self._selection_rect,
+            annotations=len(self._annotations),
+            pin=pin,
+            action="pin" if pin else "save",
+        )
         self._Gtk.main_quit()
 
     def _on_cancel(self, button) -> None:

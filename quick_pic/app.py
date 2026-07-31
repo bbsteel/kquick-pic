@@ -11,6 +11,7 @@ from quick_pic.clipboard import ClipboardManager
 from quick_pic.config import AppConfig, ConfigManager
 from quick_pic.hotkey import HotkeyBinding, HotkeyManager
 from quick_pic.i18n import set_language, t
+from quick_pic.pin import PinManager
 from quick_pic.screenshot import ScreenshotCapture
 from quick_pic.tray import TrayManager
 
@@ -28,6 +29,7 @@ class QuickPicApp:
         self._hotkey_manager: HotkeyManager | None = None
         self._tray_manager: TrayManager | None = None
         self._area_selector = None
+        self._pin_manager = PinManager()
         self._screenshot_in_progress = False
         self._history_in_progress = False
 
@@ -112,6 +114,7 @@ class QuickPicApp:
         if self._area_selector is not None:
             self._area_selector.destroy()
             self._area_selector = None
+        self._pin_manager.close_all()
         try:
             PID_FILE.unlink(missing_ok=True)
         except OSError:
@@ -162,6 +165,7 @@ class QuickPicApp:
                 "screenshot_selection_ready",
                 rect=selection.rect,
                 annotations=len(selection.annotations),
+                pin=selection.pin,
             )
             save_started_at = now()
             try:
@@ -177,7 +181,27 @@ class QuickPicApp:
             clipboard_started_at = now()
             ClipboardManager.set_path(str(path))
             log_duration(logger, "screenshot_copied_to_clipboard", clipboard_started_at, path=path)
-            log_duration(logger, "screenshot_flow_finished", flow_started_at, source=source, path=path)
+            # Pin only when the user chose the pin toolbar button.
+            if selection.pin:
+                pin_started_at = now()
+                pin_x, pin_y, _, _ = selection.rect
+                pinned = self._pin_manager.pin(path, position=(pin_x, pin_y))
+                log_duration(
+                    logger,
+                    "screenshot_pinned",
+                    pin_started_at,
+                    path=path,
+                    pinned=pinned is not None,
+                    open_pins=self._pin_manager.count,
+                )
+            log_duration(
+                logger,
+                "screenshot_flow_finished",
+                flow_started_at,
+                source=source,
+                path=path,
+                pin=selection.pin,
+            )
         except Exception:
             logger.exception("Screenshot capture failed")
             if self._tray_manager:

@@ -20,6 +20,8 @@ class SelectionResult:
     annotations: list[
         "RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation | NumberStampAnnotation"
     ]
+    # True when the user chose Pin (钉住); False for Save (保存).
+    pin: bool = False
 
 
 @dataclass(frozen=True)

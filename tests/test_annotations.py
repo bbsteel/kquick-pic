@@ -130,6 +130,23 @@ class TestDrawPreviews:
 
 
 class TestSelectionResult:
+    def test_defaults_pin_false(self):
+        result = SelectionResult(
+            rect=(0, 0, 100, 100),
+            screenshot_path="/tmp/test.png",
+            annotations=[],
+        )
+        assert result.pin is False
+
+    def test_pin_flag(self):
+        result = SelectionResult(
+            rect=(0, 0, 100, 100),
+            screenshot_path="/tmp/test.png",
+            annotations=[],
+            pin=True,
+        )
+        assert result.pin is True
+
     def test_line_in_annotations(self):
         line = LineAnnotation(start=(0, 0), end=(10, 10), color=(0, 0, 0))
         result = SelectionResult(

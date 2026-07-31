@@ -42,9 +42,12 @@ class TestNextOutputPath:
             assert path.name.startswith("quick-pic-")
             assert path.name.endswith(".png")
 
-    def test_resolves_home_directory(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            config = AppConfig(save_path=f"~/{tmp.split('/')[-1]}", format="png")
-            # Just verify it doesn't crash and returns a Path
-            path = ScreenshotCapture._next_output_path(config)
-            assert isinstance(path, Path)
+    def test_resolves_home_directory(self, tmp_path, monkeypatch):
+        # Expand ~ via HOME so we never mkdir under the real $HOME root
+        # (agent sandboxes often forbid creating /home/<user>/tmp*).
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config = AppConfig(save_path="~/screenshots", format="png")
+        path = ScreenshotCapture._next_output_path(config)
+        assert isinstance(path, Path)
+        assert path.parent == tmp_path / "screenshots"
+        assert path.parent.exists()

@@ -39,7 +39,9 @@
     "selector.draw_arrow": "画箭头",
     "selector.number_stamp": "数字印章",
     "selector.choose_color": "选择颜色",
-    "selector.confirm": "确认",
+    "selector.save": "保存",
+    "selector.pin": "钉住",
+    "selector.confirm": "保存",
     "selector.cancel": "取消",
     "selector.undo": "撤销",
     "selector.accept_text": "确认文字",
@@ -58,6 +60,7 @@
     "about.gtk": "GTK",
     "about.session_type": "会话类型",
     "about.gdk_backend": "GDK 后端",
-    "about.display": "显示"
+    "about.display": "显示",
+    "pin.close": "关闭"
   }
 }

@@ -89,9 +89,23 @@ def _draw_undo(cr: cairo.Context, size: float) -> None:
 
 
 def _draw_confirm(cr: cairo.Context, size: float) -> None:
+    # Checkmark — used for Save.
     cr.move_to(size * 0.27, size * 0.53)
     cr.line_to(size * 0.44, size * 0.70)
     cr.line_to(size * 0.75, size * 0.33)
+    cr.stroke()
+
+
+def _draw_pin(cr: cairo.Context, size: float) -> None:
+    # Pushpin: round head + short needle.
+    cr.arc(size * 0.50, size * 0.34, size * 0.18, 0, math.tau)
+    cr.stroke()
+    cr.move_to(size * 0.50, size * 0.52)
+    cr.line_to(size * 0.50, size * 0.80)
+    cr.stroke()
+    # Small crossbar under the head.
+    cr.move_to(size * 0.36, size * 0.50)
+    cr.line_to(size * 0.64, size * 0.50)
     cr.stroke()
 
 
@@ -127,6 +141,8 @@ _DRAWERS = {
     "number": _draw_number,
     "color": _draw_color,
     "undo": _draw_undo,
-    "confirm": _draw_confirm,
+    "save": _draw_confirm,
+    "confirm": _draw_confirm,  # alias for save checkmark
+    "pin": _draw_pin,
     "cancel": _draw_cancel,
 }

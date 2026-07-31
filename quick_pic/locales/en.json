@@ -39,7 +39,9 @@
     "selector.draw_arrow": "Draw arrow",
     "selector.number_stamp": "Number stamp",
     "selector.choose_color": "Choose color",
-    "selector.confirm": "Confirm",
+    "selector.save": "Save",
+    "selector.pin": "Pin",
+    "selector.confirm": "Save",
     "selector.cancel": "Cancel",
     "selector.undo": "Undo",
     "selector.accept_text": "Accept text",
@@ -58,6 +60,7 @@
     "about.gtk": "GTK",
     "about.session_type": "Session",
     "about.gdk_backend": "GDK Backend",
-    "about.display": "Display"
+    "about.display": "Display",
+    "pin.close": "Close"
   }
 }

@@ -12,7 +12,9 @@ ICON_NAMES = (
     "number",
     "color",
     "undo",
+    "save",
     "confirm",
+    "pin",
     "cancel",
 )
 
