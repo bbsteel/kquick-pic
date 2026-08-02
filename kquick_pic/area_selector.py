@@ -326,6 +326,9 @@ class AreaSelector:
         # show_all() un-hides the toolbar/palette/text editor; hide them again.
         self._hide_selection_controls()
         self._drawing.grab_focus()
+        # First map can allocate 0×0 or a transient size on XWayland; force a
+        # redraw once the surface is really sized so the freeze frame appears.
+        self._GLib.idle_add(self._redraw_overlay_idle)
         log_duration(
             logger,
             "selector_overlay_shown",
@@ -853,6 +856,12 @@ class AreaSelector:
         # screen. The next capture's set_from_pixbuf() replaces this image.
         self._background_pixbuf = None
 
+    def _redraw_overlay_idle(self) -> bool:
+        """GLib.idle_add callback: queue a full overlay redraw once."""
+        if self._drawing is not None and self._in_run:
+            self._drawing.queue_draw()
+        return False
+
     def _update_overlay_geometry(self) -> None:
         """Schedule a redraw of the single overlay DrawingArea.
 
@@ -870,37 +879,44 @@ class AreaSelector:
     def _on_draw_overlay(self, widget, cr):
         draw_started_at = now()
         self._draw_count += 1
-        if not self._first_draw_logged and self._run_started_at:
-            self._first_draw_logged = True
-            log_duration(logger, "selector_first_draw", self._run_started_at)
-
-        # Single DrawingArea paints the entire overlay: frozen screenshot,
-        # dim mask outside the selection, then border / handles /
-        # annotations. CLEAR the invalid region first so old mask pixels
-        # don't ghost when the selection grows or moves — requires the
-        # window to be on an ARGB visual, otherwise CLEAR writes opaque
-        # black and we degrade to redrawing without clearing (ghosting
-        # may reappear).
-        #
-        # CRITICAL: always re-paint the freeze frame after CLEAR. CLEAR
-        # erases sibling Gtk.Image pixels on the shared window surface.
-        # If we only paint a semi-transparent dim, the ARGB window becomes
-        # a see-through veil over the *live* desktop — which has already
-        # lost popups, dropdowns, hover, and selection after our overlay
-        # stole focus. The frame captured *before* show_all is the only
-        # correct backdrop (open menus, text highlights, etc.).
-        if self._rgba_available:
-            cr.set_operator(cairo.OPERATOR_CLEAR)
-            cr.paint()
-            cr.set_operator(cairo.OPERATOR_OVER)
-
         w = widget.get_allocated_width()
         h = widget.get_allocated_height()
+        if not self._first_draw_logged and self._run_started_at:
+            self._first_draw_logged = True
+            pb = self._background_pixbuf
+            log_duration(
+                logger,
+                "selector_first_draw",
+                self._run_started_at,
+                allocated=(w, h),
+                pixbuf=(
+                    (pb.get_width(), pb.get_height()) if pb is not None else None
+                ),
+                rgba=self._rgba_available,
+            )
+
+        # Single DrawingArea paints the entire overlay every time:
+        #   1) freeze-frame (captured before the window mapped)
+        #   2) dim mask outside the selection
+        #   3) border / handles / annotations
+        #
+        # Do NOT use cairo.OPERATOR_CLEAR. On some XWayland/ARGB paths CLEAR
+        # writes opaque black instead of transparent; the following paint then
+        # never recovers a usable frame and the user sees a pure black screen.
+        # Full freeze-frame repaint already overwrites previous dim/border.
+        cr.set_operator(cairo.OPERATOR_OVER)
 
         if self._background_pixbuf is not None:
+            # Paint in capture coordinates (selection rects are capture-space).
+            # Do not scale here — a size mismatch is fixed by idle redraw after
+            # the fullscreen surface settles to the capture dimensions.
             self._Gdk.cairo_set_source_pixbuf(
                 cr, self._background_pixbuf, 0, 0
             )
+            cr.paint()
+        else:
+            # Should not happen while the overlay is shown; avoid pure black.
+            cr.set_source_rgb(0.12, 0.14, 0.18)
             cr.paint()
 
         active_rect = self._active_selection_rect_for_draw()
