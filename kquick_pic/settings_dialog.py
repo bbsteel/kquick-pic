@@ -1,5 +1,5 @@
 import logging
-from quick_pic.config import (
+from kquick_pic.config import (
     AppConfig,
     HISTORY_COUNT_DEFAULT,
     HISTORY_COUNT_MAX,
@@ -7,8 +7,8 @@ from quick_pic.config import (
     VALID_FORMATS,
     VALID_ICON_THEMES,
 )
-from quick_pic.i18n import available_languages, current_language, set_language, t
-from quick_pic.icon import get_icon_path, get_icon_theme_label
+from kquick_pic.i18n import available_languages, current_language, set_language, t
+from kquick_pic.icon import get_icon_path, get_icon_theme_label
 
 logger = logging.getLogger(__name__)
 

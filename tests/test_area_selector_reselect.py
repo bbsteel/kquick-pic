@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from quick_pic.area_selector import AreaSelector
-from quick_pic.annotations import RectangleAnnotation
+from kquick_pic.area_selector import AreaSelector
+from kquick_pic.annotations import RectangleAnnotation
 
 
 class FakeDrawing:

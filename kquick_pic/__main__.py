@@ -25,20 +25,20 @@ if getattr(sys, 'frozen', False):
         if _os.path.isdir(_p) and _p not in sys.path:
             sys.path.append(_p)
 
-from quick_pic.app import QuickPicApp
+from kquick_pic.app import KQuickPicApp
 
 
 def main():
-    level_name = os.environ.get("QUICK_PIC_LOG_LEVEL", "INFO").upper()
+    level_name = os.environ.get("KQUICK_PIC_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
-    print(f"quick-pic started (PID {os.getpid()})", flush=True)
+    print(f"kquick-pic started (PID {os.getpid()})", flush=True)
     logging.info(f"Logging initialized at {logging.getLevelName(level)}")
 
-    app = QuickPicApp()
+    app = KQuickPicApp()
 
     def _handle_signal(signum, frame):
         logging.info(f"Received signal {signum}, shutting down")

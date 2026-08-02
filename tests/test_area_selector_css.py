@@ -1,4 +1,4 @@
-from quick_pic.area_selector import TOOLBAR_CSS
+from kquick_pic.area_selector import TOOLBAR_CSS
 
 
 def test_toolbar_buttons_disable_theme_background_images():

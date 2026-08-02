@@ -12,7 +12,7 @@ print(data["project"]["version"])
 PY
 )"
 OUT_DIR="$ROOT_DIR/dist"
-ARCHIVE_NAME="quick-pic-$VERSION.tar.gz"
+ARCHIVE_NAME="kquick-pic-$VERSION.tar.gz"
 
 mkdir -p "$OUT_DIR"
 

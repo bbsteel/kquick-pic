@@ -1,4 +1,4 @@
-from quick_pic.tray import (
+from kquick_pic.tray import (
     _MENU_ID_ABOUT,
     _MENU_ID_PID,
     _MENU_ID_QUIT,

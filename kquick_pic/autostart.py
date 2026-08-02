@@ -2,13 +2,13 @@ from pathlib import Path
 import logging
 import sys
 
-from quick_pic.icon import get_icon_path
-from quick_pic.i18n import t
+from kquick_pic.icon import get_icon_path
+from kquick_pic.i18n import t
 
 logger = logging.getLogger(__name__)
 
 AUTOSTART_DIR = Path.home() / ".config" / "autostart"
-AUTOSTART_FILE = AUTOSTART_DIR / "quick-pic.desktop"
+AUTOSTART_FILE = AUTOSTART_DIR / "kquick-pic.desktop"
 
 
 class AutoStartManager:
@@ -34,7 +34,7 @@ class AutoStartManager:
             python_path = Path(sys.executable)
             if not python_path.is_absolute():
                 python_path = python_path.resolve()
-            exec_cmd = f"{python_path} -m quick_pic"
+            exec_cmd = f"{python_path} -m kquick_pic"
             working_dir = str(Path(__file__).resolve().parent.parent)
 
         icon_path = get_icon_path(config.icon_theme).resolve()

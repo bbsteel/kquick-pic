@@ -2,7 +2,7 @@
 
 ## 背景
 
-quick-pic 截图工具的区域选择器（`area_selector.py`）在用户选区完成后，会在画面底部显示一排工具栏按钮（画框、添加文字、画线、画箭头、数字印章、选择颜色、撤销、确认、取消）。
+kquick-pic 截图工具的区域选择器（`area_selector.py`）在用户选区完成后，会在画面底部显示一排工具栏按钮（画框、添加文字、画线、画箭头、数字印章、选择颜色、撤销、确认、取消）。
 
 用户反馈工具栏"参差不齐"——各按钮在视觉上高低不一、整体凌乱。
 
@@ -112,7 +112,7 @@ def _icon_font_size_pt(icon_text, target_px=18):
 - 图标字号统一 17px（CSS）
 - 各图标视觉大小有差距，但按钮整体不再凌乱
 
-相关代码位置：`quick_pic/area_selector.py`，函数 `_make_tool_button()`（在 `_setup_overlay()` 内部）。
+相关代码位置：`kquick_pic/area_selector.py`，函数 `_make_tool_button()`（在 `_setup_overlay()` 内部）。
 
 ---
 
@@ -137,7 +137,7 @@ def _icon_font_size_pt(icon_text, target_px=18):
 
 ### 方案 B：嵌入 SVG/PNG 图标
 
-使用 `Gtk.Image.new_from_pixbuf()` 加载固定尺寸（如 20×20）的图标图片，图标文件统一放在 `quick_pic/icons/` 目录。
+使用 `Gtk.Image.new_from_pixbuf()` 加载固定尺寸（如 20×20）的图标图片，图标文件统一放在 `kquick_pic/icons/` 目录。
 
 优点：最简单、最可靠。  
 缺点：需要图标素材；主题色跟随（active 状态变蓝）需要对 SVG 做额外处理或切两套图。

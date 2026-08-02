@@ -3,21 +3,21 @@
 import os
 
 datas = [
-    ('quick_pic/icons', 'quick_pic/icons'),
-    ('quick_pic/locales', 'quick_pic/locales'),
+    ('kquick_pic/icons', 'kquick_pic/icons'),
+    ('kquick_pic/locales', 'kquick_pic/locales'),
 ]
 
-build_info_file = os.environ.get('QUICK_PIC_BUILD_INFO_FILE')
+build_info_file = os.environ.get('KQUICK_PIC_BUILD_INFO_FILE')
 if build_info_file:
-    datas.append((build_info_file, 'quick_pic'))
+    datas.append((build_info_file, 'kquick_pic'))
 
 a = Analysis(
-    ['quick_pic/__main__.py'],
+    ['kquick_pic/__main__.py'],
     pathex=[],
     binaries=[],
     datas=datas,
     hiddenimports=[
-        'quick_pic.about',
+        'kquick_pic.about',
         'mss', 'mss.tools', 'mss.linux',
         'pynput', 'pynput.keyboard', 'pynput.keyboard._xorg',
         'pynput._util', 'pynput._util.xorg',
@@ -47,7 +47,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='quick-pic',
+    name='kquick-pic',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -63,5 +63,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='quick-pic',
+    name='kquick-pic',
 )

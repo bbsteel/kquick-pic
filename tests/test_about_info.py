@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from quick_pic.about import collect_build_info, collect_system_info, format_about_lines
+from kquick_pic.about import collect_build_info, collect_system_info, format_about_lines
 
 
 def test_collect_build_info_reads_generated_metadata(tmp_path):

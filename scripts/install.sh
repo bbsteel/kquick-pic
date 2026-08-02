@@ -7,9 +7,9 @@ VENV_DIR="$ROOT_DIR/.venv"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP_DIR="$DATA_HOME/applications"
 ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
-DESKTOP_FILE="$APP_DIR/quick-pic.desktop"
-ICON_FILE="$ICON_DIR/quick-pic.png"
-DEFAULT_ICON="$ROOT_DIR/quick_pic/icons/quick-pic-tray-v1.png"
+DESKTOP_FILE="$APP_DIR/kquick-pic.desktop"
+ICON_FILE="$ICON_DIR/kquick-pic.png"
+DEFAULT_ICON="$ROOT_DIR/kquick_pic/icons/kquick-pic-tray-v1.png"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -42,22 +42,25 @@ cp "$DEFAULT_ICON" "$ICON_FILE"
 # org.kde.KWin.ScreenShot2 callers by matching the caller's /proc/<pid>/exe
 # against the canonical path of the desktop file's Exec first argument, then
 # reading X-KDE-DBUS-Restricted-Interfaces from that desktop file. The
-# quick-pic console script would not match (its canonical path is itself,
+# kquick-pic console script would not match (its canonical path is itself,
 # while the process exe is the python interpreter).
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Quick Pic
-Comment=Quick screenshot tool
-Exec=$VENV_DIR/bin/python3 -m quick_pic
+Name=KQuick Pic
+Comment=KDE/Plasma-oriented quick screenshot tool
+Exec=$VENV_DIR/bin/python3 -m kquick_pic
 Path=$ROOT_DIR
-Icon=quick-pic
+Icon=kquick-pic
 Terminal=false
 Categories=Utility;Graphics;
 StartupNotify=false
 X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 EOF
+
+# Drop pre-rename launcher if present.
+rm -f "$APP_DIR/quick-pic.desktop" "$ICON_DIR/quick-pic.png"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
@@ -67,4 +70,4 @@ if command -v kbuildsycoca6 >/dev/null 2>&1; then
   kbuildsycoca6 >/dev/null 2>&1 || true
 fi
 
-echo "Installed Quick Pic launcher at $DESKTOP_FILE"
+echo "Installed KQuick Pic launcher at $DESKTOP_FILE"

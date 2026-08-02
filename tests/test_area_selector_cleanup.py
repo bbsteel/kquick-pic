@@ -1,4 +1,4 @@
-from quick_pic.area_selector import AreaSelector
+from kquick_pic.area_selector import AreaSelector
 
 
 class FakeWindow:

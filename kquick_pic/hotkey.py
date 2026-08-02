@@ -45,7 +45,7 @@ _QT_NAMED_KEYS = {
 for _i in range(1, 25):
     _QT_NAMED_KEYS[f"f{_i}"] = 0x01000030 + _i - 1
 
-_COMPONENT = "quick-pic"
+_COMPONENT = "kquick-pic"
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 import cairo
 import pytest
-from quick_pic.annotations import (
+from kquick_pic.annotations import (
     LineAnnotation,
     ArrowAnnotation,
     NumberStampAnnotation,

@@ -1,235 +1,228 @@
-# Quick Pic
+# KQuick Pic (`kquick-pic`)
 
-Quick Pic 是一个面向特定 Linux 桌面环境的快速截图工具，目标是提供**比系统自带截图工具更轻、更快、更适合常驻使用**的体验。
+**Unofficial, personal, KDE/Plasma-oriented** quick screenshot tool for Linux.
 
-它的核心场景是：
+Not an official KDE project. Not a cross-platform app. Not a “works on every Linux DE” package.  
+It exists to be **lighter and faster for daily tray use** on a KDE-ish desktop than stock screenshot tools.
 
-- 托盘常驻
-- 全局快捷键触发
-- 区域截图
-- 截图后即时标注
-- 自动保存并把文件路径写入剪贴板
+中文名可用：**KQuick Pic**。Python 包名：`kquick_pic`。CLI / desktop id：`kquick-pic`。
 
-## 功能概览
+---
 
-- 托盘图标 + 右键菜单
-- 全局快捷键截图
-- 区域框选、拖动、缩放
-- 线框标注
-- 文本标注
-- 自动保存到本地目录
-- 自启动开关
-- 中英文界面
-- 插件式语言包扩展
+## What it is
 
-## 平台支持范围
+Always-on tray utility:
 
-Quick Pic 不是跨平台截图方案，也不是通用 Linux 包。当前实现主要面向：
+- Global hotkey → region select
+- Freeze-frame overlay with annotations (box / text / line / arrow / number stamps)
+- **Save** (disk + path to clipboard) or **Pin** (floating always-on-top window)
+- Recent-history picker hotkey
+- Autostart toggle, zh-CN / en (+ user locale plugins)
 
-- Linux 桌面环境
-- X11 图形会话
-- GTK3 / PyGObject 可用的发行版环境
-- 支持 D-Bus `org.kde.StatusNotifierItem` 托盘协议的桌面环境
-- 有 compositor / RGBA visual 支持的窗口管理环境
+### Pin vs Save
 
-这些场景目前不保证可用：
+| Action | Result |
+|--------|--------|
+| **Save** | Write file + copy path to clipboard |
+| **Pin** | Same as Save, then pin image on screen (drag, right-click Close, strong border) |
+| Double-click selection | Save (not pin) |
 
-- Windows / macOS
-- Wayland 会话
-- headless 服务器、容器、CI
-- 没有系统托盘或不支持 StatusNotifierItem 的桌面环境
-- 禁止全局热键、屏幕截图或透明全屏窗口的受限桌面/沙箱环境
+---
 
-Wayland 下尤其容易受到桌面安全策略限制：全局热键、全屏截图、窗口覆盖层和托盘行为都可能不可用、需要额外授权，或只能通过 xdg-desktop-portal 等平台 API 重新适配。
+## Platform support (read this)
 
-## 运行环境
+### Designed for
 
-当前项目面向 Linux 桌面环境，主要假设：
+| Layer | Expectation |
+|-------|-------------|
+| OS | Linux desktop only |
+| DE (best) | **KDE Plasma** — KWin ScreenShot2, StatusNotifierItem tray, KGlobalAccel hotkeys |
+| Session | X11 preferred; on Wayland the app forces `GDK_BACKEND=x11` (XWayland) for the overlay |
+| Toolkit | GTK3 + PyGObject + `dbus-python` (**system packages**, not pure pip) |
+| Tray | D-Bus `org.kde.StatusNotifierItem` |
+| Capture order | **KWin ScreenShot2** → xdg-desktop-portal → `mss` |
 
-- X11 会话
-- GTK3 可用
-- D-Bus 可用
-- 系统已安装 PyGObject / `dbus-python`
-- 可用的系统托盘实现支持 `org.kde.StatusNotifierItem`
-- 桌面允许 `pynput` / XRecord 监听全局热键
-- `mss` 能读取屏幕内容
-- compositor 支持透明全屏选区窗口；不支持时遮罩效果可能退化
+### Not guaranteed
 
-## 安装
+- Windows / macOS  
+- Every Linux distro / every DE equally  
+- Pure Wayland without XWayland / without a working portal  
+- Headless, containers, CI  
+- Environments without a SNI tray host  
+- Sandboxes that block global hotkeys or screen capture  
 
-### 方式一：从源码目录直接安装
+**GNOME / other DEs** may run with more friction (tray extensions, portal prompts, slower capture, hotkey limits).  
+**Distro name** (Arch, Fedora, Ubuntu, SteamOS, …) matters less than **DE + session + system deps**.
 
-这是最推荐的安装方式。
+### Naming
 
-```bash
-./scripts/install.sh
-```
+`k` = KDE-oriented (community convention), **not** “official KDE software”.  
+Former name: **Quick Pic** / `quick-pic`. Config under `~/.config/quick-pic` is migrated automatically on first run when the new path is empty.
 
-安装脚本会自动完成这些事情：
+---
 
-1. 用系统 Python 3.13 创建 `.venv`
-2. 执行 `uv sync --frozen`
-3. 安装桌面启动器到 `~/.local/share/applications/quick-pic.desktop`
-4. 安装桌面图标到 `~/.local/share/icons/hicolor/256x256/apps/quick-pic.png`
-
-### 方式二：手动运行开发版本
-
-如果你只是本地开发或调试：
-
-```bash
-uv venv --system-site-packages --python python3.13
-uv sync
-uv run python -m quick_pic
-```
-
-## 依赖要求
-
-运行前需要这些基础依赖：
+## Requirements
 
 - `uv`
-- `python3.13`
+- `python3.13` (or adjust scripts)
 - GTK3 / PyGObject
 - `dbus-python`
 
-之所以必须使用 `--system-site-packages`，是因为 GTK3 / PyGObject / `dbus-python` 通常来自系统包，而不是 pip。
+venv **must** use `--system-site-packages` because GTK/DBus come from the OS.
 
-### 安装系统依赖
+### System packages
 
-**Arch Linux / SteamOS（pacman）：**
+**Arch / SteamOS (pacman):**
 
 ```bash
 sudo pacman -S python-gobject gtk3 python-dbus
 ```
 
-**Ubuntu / Debian（apt）：**
+**Debian / Ubuntu (apt):**
 
 ```bash
 sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 python3-dbus
 ```
 
-**Fedora（dnf）：**
+**Fedora (dnf):**
 
 ```bash
 sudo dnf install python3-gobject gtk3 python3-dbus
 ```
 
-安装后可验证：
+Check:
 
 ```bash
 python3 -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk; print('GTK OK')"
 python3 -c "import dbus; print('dbus OK')"
 ```
 
-## 分发给别人
+---
 
-### 方式一：构建单体可执行程序（推荐）
+## Install & run
 
-使用 PyInstaller 构建为独立二进制，无需 uv/Python 运行环境：
-
-```bash
-./scripts/build-binary.sh
-```
-
-构建产物位于 `dist/quick-pic/`，可直接运行：
+### Recommended (source tree)
 
 ```bash
-./dist/quick-pic/quick-pic
-```
-
-打包为 tar.gz 分发给别人：
-
-```bash
-./scripts/package-binary.sh
-# 输出: dist/quick-pic-0.1.0-linux-x86_64.tar.gz
-```
-
-对方解压即用，只需系统装有 GTK3/PyGObject/dbus-python（无需 uv/Python），并满足上面的 Linux 桌面环境前提：
-
-```bash
-tar -xzf quick-pic-0.1.0-linux-x86_64.tar.gz
-cd quick-pic
-./quick-pic
-```
-
-### 方式二：打源码分发包
-
-```bash
-./scripts/package-release.sh
-```
-
-输出文件：
-
-```bash
-dist/quick-pic-0.1.0.tar.gz
-```
-
-### 对方安装步骤
-
-把 `dist/quick-pic-0.1.0.tar.gz` 发给对方后，对方执行：
-
-```bash
-tar -xzf quick-pic-0.1.0.tar.gz
-cd quick-pic
 ./scripts/install.sh
 ```
 
-## 卸载
+This:
 
-移除桌面启动器、图标和自启动文件：
+1. Creates `.venv` with system site-packages  
+2. `uv sync --frozen`  
+3. Installs `~/.local/share/applications/kquick-pic.desktop`  
+4. Installs icon `…/icons/hicolor/256x256/apps/kquick-pic.png`  
+5. Registers KWin restricted interface for ScreenShot2 (important on Plasma)
+
+### Dev run
+
+```bash
+uv venv --system-site-packages --python python3.13
+uv sync
+uv run python -m kquick_pic
+# or
+./start.sh start
+./start.sh restart
+```
+
+CLI entry after install:
+
+```bash
+kquick-pic
+# or
+python -m kquick_pic
+```
+
+### Uninstall desktop integration
 
 ```bash
 ./scripts/uninstall.sh
 ```
 
-## 配置
+(Also removes leftover `quick-pic.desktop` from the old name.)
 
-配置文件位置：
+---
+
+## Package / binary release
 
 ```bash
-~/.config/quick-pic/config.json
+./scripts/build-binary.sh
+./scripts/package-binary.sh
+# → dist/kquick-pic-0.1.0-linux-x86_64.tar.gz
 ```
 
-示例：
+Source tarball:
+
+```bash
+./scripts/package-release.sh
+# → dist/kquick-pic-0.1.0.tar.gz
+```
+
+Recipients still need system GTK3 / PyGObject / dbus and a suitable desktop session.
+
+---
+
+## Configuration
+
+```text
+~/.config/kquick-pic/config.json
+```
+
+Example:
 
 ```json
 {
-  "save_path": "~/Pictures/quick-pic",
+  "save_path": "~/Pictures/kquick-pic",
   "format": "png",
   "hotkey": "<ctrl>+<shift>+p",
   "icon_theme": "v1",
   "autostart": false,
-  "language": "zh-CN"
+  "language": "zh-CN",
+  "include_cursor": true,
+  "history_hotkey": "<ctrl>+<shift>+h",
+  "history_count": 5
 }
 ```
 
-## 多语言
+- **Autostart** desktop: `~/.config/autostart/kquick-pic.desktop`  
+- **User locales**: `~/.config/kquick-pic/locales/*.json`  
+- **Builtin locales**: `kquick_pic/locales/`  
+- **Screenshot files**: `kquick-pic-YYYY-…png` (history still lists legacy `quick-pic-*` files)
 
-首批内置语言：
+### Migration from Quick Pic
 
-- `zh-CN`
-- `en`
+On first start, if `~/.config/kquick-pic/config.json` is missing and `~/.config/quick-pic/config.json` exists, the config (and optional `locales/`) is **copied** to the new path.  
+Your existing pictures under `~/Pictures/quick-pic` are left alone; change `save_path` in settings if you want the new default folder.
 
-新增语言有两种方式：
+---
 
-1. 项目内置语言包：`quick_pic/locales/*.json`
-2. 用户侧语言插件：`~/.config/quick-pic/locales/*.json`
+## Plasma notes
 
-每个语言文件都是一个 JSON 插件，至少包含：
+- Desktop `Exec` must be **`.venv/bin/python3 -m kquick_pic`** (not the console-script shim) so KWin can match `/proc/self/exe` for ScreenShot2 authorization.  
+- Desktop must include:
 
-- `code`
-- `name`
-- `messages`
+  ```text
+  X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+  ```
 
-## 入口命令
+- If ScreenShot2 is unauthorized, capture falls back to the portal (slower, may bounce launch feedback).
 
-安装完成后可直接运行：
+---
 
-```bash
-quick-pic
+## Project layout
+
+```text
+kquick_pic/          # application package
+scripts/             # install, build, package
+start.sh             # build / install / start / stop / restart
+tests/
+kquick-pic.spec      # PyInstaller
 ```
 
-或：
+---
 
-```bash
-python -m quick_pic
-```
+## License / status
+
+Personal open-source style project. Use at your own risk.  
+Issues and PRs may be handled on a best-effort basis; the primary target is **the maintainer’s Plasma desktop**, not universal multi-DE support.

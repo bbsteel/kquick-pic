@@ -4,8 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from quick_pic.screenshot import ScreenshotCapture
-from quick_pic.config import AppConfig
+from kquick_pic.screenshot import ScreenshotCapture
+from kquick_pic.config import AppConfig
 
 
 class TestNextOutputPath:
@@ -39,7 +39,7 @@ class TestNextOutputPath:
         with tempfile.TemporaryDirectory() as tmp:
             config = AppConfig(save_path=tmp, format="png")
             path = ScreenshotCapture._next_output_path(config)
-            assert path.name.startswith("quick-pic-")
+            assert path.name.startswith("kquick-pic-")
             assert path.name.endswith(".png")
 
     def test_resolves_home_directory(self, tmp_path, monkeypatch):

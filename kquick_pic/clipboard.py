@@ -1,6 +1,6 @@
 import logging
 
-from quick_pic.timing import log_duration, now
+from kquick_pic.timing import log_duration, now
 
 logger = logging.getLogger(__name__)
 

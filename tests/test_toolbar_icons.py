@@ -1,7 +1,7 @@
 import cairo
 import pytest
 
-from quick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
+from kquick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
 
 
 ICON_NAMES = (

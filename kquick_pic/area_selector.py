@@ -4,9 +4,9 @@ from pathlib import Path
 
 import cairo
 
-from quick_pic.timing import log_debug_duration, log_debug_event, log_duration, log_event, now
-from quick_pic.i18n import t
-from quick_pic.annotations import (
+from kquick_pic.timing import log_debug_duration, log_debug_event, log_duration, log_event, now
+from kquick_pic.i18n import t
+from kquick_pic.annotations import (
     SelectionResult,
     RectangleAnnotation,
     TextAnnotation,
@@ -14,7 +14,7 @@ from quick_pic.annotations import (
     ArrowAnnotation,
     NumberStampAnnotation,
 )
-from quick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
+from kquick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +243,7 @@ class AreaSelector:
             except Exception:
                 logger.warning(
                     "KWin ScreenShot2 capture failed, falling back to XDG portal "
-                    "(expect launch-feedback bounce; check that quick-pic.desktop "
+                    "(expect launch-feedback bounce; check that kquick-pic.desktop "
                     "declares X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2)",
                     exc_info=True,
                 )
@@ -954,25 +954,25 @@ class AreaSelector:
                 preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
             if preview_rect is not None:
                 sx, sy, _, _ = self._selection_rect
-                from quick_pic.annotations import _draw_rectangle_annotation as _dra
+                from kquick_pic.annotations import _draw_rectangle_annotation as _dra
                 _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=False)
         elif self._pending_text_rect is not None:
             sx, sy, _, _ = self._selection_rect
-            from quick_pic.annotations import _draw_rectangle_annotation as _dra
+            from kquick_pic.annotations import _draw_rectangle_annotation as _dra
             _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_color()), sx, sy, dashed=False)
 
         if self._dragging and self._gesture_kind == "line" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
             start_rel = (int(self._start_x - sx), int(self._start_y - sy))
             end_rel = (int(self._end_x - sx), int(self._end_y - sy))
-            from quick_pic.annotations import draw_line_preview
+            from kquick_pic.annotations import draw_line_preview
             draw_line_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
         if self._dragging and self._gesture_kind == "arrow" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
             start_rel = (int(self._start_x - sx), int(self._start_y - sy))
             end_rel = (int(self._end_x - sx), int(self._end_y - sy))
-            from quick_pic.annotations import draw_arrow_preview
+            from kquick_pic.annotations import draw_arrow_preview
             draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
         log_debug_duration(
@@ -1436,7 +1436,7 @@ class AreaSelector:
         start_abs: tuple[float, float],
         end_abs: tuple[float, float],
     ) -> "LineAnnotation | None":
-        from quick_pic.annotations import LineAnnotation
+        from kquick_pic.annotations import LineAnnotation
         if self._selection_rect is None:
             return None
         sx, sy, sw, sh = self._selection_rect
@@ -1457,7 +1457,7 @@ class AreaSelector:
         start_abs: tuple[float, float],
         end_abs: tuple[float, float],
     ) -> "ArrowAnnotation | None":
-        from quick_pic.annotations import ArrowAnnotation
+        from kquick_pic.annotations import ArrowAnnotation
         if self._selection_rect is None:
             return None
         sx, sy, sw, sh = self._selection_rect
@@ -1512,7 +1512,7 @@ class AreaSelector:
         if self._selection_rect is None:
             return
         sx, sy, _, _ = self._selection_rect
-        from quick_pic.annotations import render_annotations
+        from kquick_pic.annotations import render_annotations
         render_annotations(cr, self._annotations, origin_x=sx, origin_y=sy)
 
     def _drag_preview_screen_rect(

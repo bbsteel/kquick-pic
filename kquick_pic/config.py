@@ -3,12 +3,16 @@ from pathlib import Path
 import json
 import logging
 import os
+import shutil
 
-from quick_pic.i18n import available_languages, current_language
+from kquick_pic.i18n import available_languages, current_language
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "quick-pic" / "config.json"
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "kquick-pic" / "config.json"
+# Pre-rename layout (quick-pic → kquick-pic).
+LEGACY_CONFIG_DIR = Path.home() / ".config" / "quick-pic"
+LEGACY_CONFIG_PATH = LEGACY_CONFIG_DIR / "config.json"
 
 VALID_FORMATS = ["png", "jpg"]
 VALID_ICON_THEMES = ["v1", "v2"]
@@ -19,7 +23,7 @@ HISTORY_COUNT_DEFAULT = 5
 
 @dataclass
 class AppConfig:
-    save_path: str = "~/Pictures/quick-pic"
+    save_path: str = "~/Pictures/kquick-pic"
     format: str = "png"
     hotkey: str = "<ctrl>+<shift>+p"
     icon_theme: str = "v1"
@@ -41,6 +45,8 @@ class ConfigManager:
         self._path = config_path or DEFAULT_CONFIG_PATH
 
     def load(self) -> AppConfig:
+        if self._path == DEFAULT_CONFIG_PATH:
+            self._maybe_migrate_legacy_config()
         try:
             with open(self._path, "r") as f:
                 data = json.load(f)
@@ -97,6 +103,27 @@ class ConfigManager:
             f.write("\n")
         os.replace(tmp_path, self._path)
         logger.info(f"Config saved to {self._path}")
+
+    def _maybe_migrate_legacy_config(self) -> None:
+        """Copy ~/.config/quick-pic → ~/.config/kquick-pic once if needed."""
+        if self._path.exists():
+            return
+        if not LEGACY_CONFIG_PATH.is_file():
+            return
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(LEGACY_CONFIG_PATH, self._path)
+            legacy_locales = LEGACY_CONFIG_DIR / "locales"
+            new_locales = self._path.parent / "locales"
+            if legacy_locales.is_dir() and not new_locales.exists():
+                shutil.copytree(legacy_locales, new_locales)
+            logger.info(
+                "Migrated config from %s to %s",
+                LEGACY_CONFIG_PATH,
+                self._path,
+            )
+        except OSError:
+            logger.warning("Failed to migrate legacy config", exc_info=True)
 
     def _validate(self, config: AppConfig) -> bool:
         if config.format not in VALID_FORMATS:

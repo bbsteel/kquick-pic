@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_SCREENSHOT_GLOBS = ("quick-pic-*.png", "quick-pic-*.jpg", "quick-pic-*.jpeg")
+# New prefix after rename; keep legacy quick-pic-* so old files still appear.
+_SCREENSHOT_GLOBS = (
+    "kquick-pic-*.png",
+    "kquick-pic-*.jpg",
+    "kquick-pic-*.jpeg",
+    "quick-pic-*.png",
+    "quick-pic-*.jpg",
+    "quick-pic-*.jpeg",
+)
 
 
 def list_recent_screenshots(save_dir: Path, limit: int) -> list[Path]:

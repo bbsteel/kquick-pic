@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from quick_pic.icon import (
+from kquick_pic.icon import (
     generate_icon,
     build_icon_pixmaps,
     _image_to_argb32,
@@ -96,7 +96,7 @@ class TestImageToARGB32:
 class TestGetIconPath:
     def test_returns_valid_path(self):
         path = get_icon_path("v1")
-        assert path.name == "quick-pic-tray-v1.png"
+        assert path.name == "kquick-pic-tray-v1.png"
 
     def test_v1_v2_different_paths(self):
         assert get_icon_path("v1") != get_icon_path("v2")

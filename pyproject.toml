@@ -1,7 +1,7 @@
 [project]
-name = "quick-pic"
+name = "kquick-pic"
 version = "0.1.0"
-description = "Quick screenshot tool with system tray and global hotkey"
+description = "KDE/Plasma-oriented quick screenshot tool (tray, hotkey, pin)"
 requires-python = ">=3.10"
 dependencies = [
     "mss>=10.0.0",
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-quick-pic = "quick_pic.__main__:main"
+kquick-pic = "kquick_pic.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -18,7 +18,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-    "quick_pic",
+    "kquick_pic",
     "CLAUDE.md",
     "scripts/*.sh",
 ]
