@@ -13,6 +13,12 @@ from kquick_pic.annotations import (
     LineAnnotation,
     ArrowAnnotation,
     NumberStampAnnotation,
+    click_text_placement_rect,
+    clamp_rect_in_bounds,
+    hit_text_annotation_index,
+    measure_text_pixel_size,
+    text_font_description,
+    _DEFAULT_TEXT_FONT_SIZE,
 )
 from kquick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
 
@@ -98,6 +104,33 @@ TOOLBAR_CSS = b"""
         border-radius: 6px;
         border: 1px solid rgba(0, 0, 0, 0.10);
     }
+    .qp-text-editor {
+        background: rgba(255, 255, 255, 0.96);
+        border-radius: 6px;
+        border: 1px solid rgba(25, 34, 44, 0.16);
+        padding: 4px;
+    }
+    .qp-text-size-bar {
+        background: transparent;
+    }
+    .qp-text-sizebutton {
+        border: none;
+        background-color: transparent;
+        min-width: 28px;
+        min-height: 24px;
+        padding: 2px 4px;
+        border-radius: 4px;
+        color: #202b36;
+        font-size: 12px;
+    }
+    .qp-text-sizebutton:hover {
+        background-color: rgba(32, 43, 54, 0.08);
+    }
+    .qp-text-sizebutton:checked, .qp-text-sizebutton.active {
+        background-color: #e8f0ff;
+        box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.28);
+        color: #1d4ed8;
+    }
     .qp-palette {
         background: rgba(255, 255, 255, 0.92);
         padding: 3px 2px;
@@ -126,15 +159,25 @@ TOOLBAR_CSS = b"""
 class AreaSelector:
     """GTK3 fullscreen overlay for selecting a screen region.
 
-    Press Escape or right-click to cancel. Left-drag to select.
+    Press Escape or right-click empty area to cancel. Right-click on placed
+    text deletes it (does not exit). Left-drag to select.
     After a selection exists (no annotation tool active): drag the interior
     to move, or drag edge/corner handles to resize; drag far outside to
     reselect. Double-click inside saves.
+
+    Text tool: click inside the selection to type immediately (no box drag).
+    The floating editor may extend outside a small selection; Esc cancels
+    text entry only, Ctrl+Enter commits. Existing text can be dragged or
+    deleted (Delete / Backspace) when selected.
     """
 
-    _TEXT_FONT = "Sans 20"
-    _TEXT_PADDING_X = 8
-    _TEXT_PADDING_Y = 6
+    _TEXT_PADDING_X = 6
+    _TEXT_PADDING_Y = 4
+    # Smaller range: better for compact screenshots.
+    _TEXT_FONT_SIZES = (10, 12, 14, 16, 18, 20)
+    # Floating editor size (screen pixels). May extend outside a small selection.
+    _TEXT_EDITOR_DEFAULT_W = 220
+    _TEXT_EDITOR_DEFAULT_H = 40
     # Hit strip around the frame (px). Larger than the drawn handle so edges
     # are easy to grab without overshooting into reselect.
     _SELECTION_HANDLE_MARGIN = 16
@@ -185,6 +228,8 @@ class AreaSelector:
         self._text_view = None
         self._text_editor = None
         self._text_editor_box = None
+        self._text_size_buttons: dict[int, object] = {}
+        self._text_font_size = _DEFAULT_TEXT_FONT_SIZE
         self._box_button = None
         self._box_button_icon = None
         self._text_button = None
@@ -197,6 +242,9 @@ class AreaSelector:
         self._color_palette = None
         self._color_palette_frame = None
         self._pending_text_rect: tuple[int, int, int, int] | None = None
+        self._selected_annotation_index: int | None = None
+        self._annotation_drag_index: int | None = None
+        self._annotation_drag_offset: tuple[float, float] | None = None
         self._selected_color_value = (255, 0, 0)
         self._next_number_stamp_value = 1
         self._selection_drag_origin: tuple[int, int, int, int] | None = None
@@ -316,6 +364,9 @@ class AreaSelector:
         self._annotations = []
         self._active_tool = None
         self._pending_text_rect = None
+        self._selected_annotation_index = None
+        self._annotation_drag_index = None
+        self._annotation_drag_offset = None
         self._selected_color_value = (255, 0, 0)
         self._next_number_stamp_value = 1
         self._selection_drag_origin = None
@@ -605,10 +656,21 @@ class AreaSelector:
         text_view.set_right_margin(self._TEXT_PADDING_X)
         text_view.set_top_margin(self._TEXT_PADDING_Y)
         text_view.set_bottom_margin(self._TEXT_PADDING_Y)
-        text_view.modify_font(self._Pango.FontDescription(self._TEXT_FONT))
         text_view.connect("focus-out-event", self._on_text_entry_focus_out)
         text_view.connect("key-press-event", self._on_key_press)
         text_buffer = text_view.get_buffer()
+
+        text_size_bar = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=2)
+        text_size_bar.get_style_context().add_class("qp-text-size-bar")
+        text_size_buttons: dict[int, object] = {}
+        for size in self._TEXT_FONT_SIZES:
+            size_button = self._Gtk.ToggleButton(label=str(size))
+            size_button.set_tooltip_text(f"{t('selector.font_size')} {size}")
+            size_button.get_style_context().add_class("qp-text-sizebutton")
+            size_button.connect("toggled", self._on_text_font_size_toggled, size)
+            text_size_bar.pack_start(size_button, False, False, 0)
+            text_size_buttons[size] = size_button
+
         text_confirm_button = self._Gtk.Button(label="✓")
         text_confirm_button.set_tooltip_text(t("selector.accept_text"))
         text_confirm_button.connect("clicked", self._commit_text_entry)
@@ -621,9 +683,13 @@ class AreaSelector:
         text_editor_buttons = self._Gtk.Box(orientation=self._Gtk.Orientation.VERTICAL, spacing=4)
         text_editor_buttons.pack_start(text_confirm_button, False, False, 0)
         text_editor_buttons.pack_start(text_cancel_button, False, False, 0)
-        text_editor = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=6)
-        text_editor.pack_start(text_editor_frame, False, False, 0)
-        text_editor.pack_start(text_editor_buttons, False, False, 0)
+        text_editor_row = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=6)
+        text_editor_row.pack_start(text_editor_frame, True, True, 0)
+        text_editor_row.pack_start(text_editor_buttons, False, False, 0)
+        text_editor = self._Gtk.Box(orientation=self._Gtk.Orientation.VERTICAL, spacing=4)
+        text_editor.get_style_context().add_class("qp-text-editor")
+        text_editor.pack_start(text_size_bar, False, False, 0)
+        text_editor.pack_start(text_editor_row, True, True, 0)
         container.put(text_editor, 16, 16)
         text_editor.hide()
 
@@ -633,6 +699,7 @@ class AreaSelector:
         self._text_view = text_view
         self._text_editor = text_editor
         self._text_editor_box = text_editor_frame
+        self._text_size_buttons = text_size_buttons
         self._box_button = box_button
         self._box_button_icon = box_button_icon
         self._text_button = text_button
@@ -646,6 +713,7 @@ class AreaSelector:
         self._color_palette_frame = color_palette_frame
         self._refresh_color_button()
         self._refresh_box_button()
+        self._apply_text_font_size(self._text_font_size, update_buttons=True)
 
         win.connect("key-press-event", self._on_key_press)
         win.connect_after("button-press-event", self._on_window_button_press)
@@ -968,12 +1036,10 @@ class AreaSelector:
         self._draw_selection_handles(cr, active_rect)
 
         self._draw_annotations(cr)
+        self._draw_selected_text_chrome(cr)
 
-        if self._dragging and self._gesture_kind in {"box", "text"}:
-            if self._gesture_kind == "text":
-                preview_rect = self._normalized_text_rect_within_selection(self._current_drag_rect())
-            else:
-                preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
+        if self._dragging and self._gesture_kind == "box":
+            preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
             if preview_rect is not None:
                 sx, sy, _, _ = self._selection_rect
                 from kquick_pic.annotations import _draw_rectangle_annotation as _dra
@@ -1032,7 +1098,20 @@ class AreaSelector:
         ):
             selection_handle = self._selection_hit_test(event.x, event.y)
             if selection_handle is not None:
+                self._clear_annotation_selection()
                 self._begin_selection_handle_drag(event, selection_handle)
+                return True
+
+        # Existing text annotations: select + drag (works with no tool or text tool).
+        if (
+            event.button == 1
+            and self._selection_rect is not None
+            and self._pending_text_rect is None
+            and self._active_tool in (None, "text")
+        ):
+            text_index = self._hit_text_annotation(event.x, event.y)
+            if text_index is not None:
+                self._begin_text_annotation_drag(event, text_index)
                 return True
 
         if (
@@ -1041,9 +1120,11 @@ class AreaSelector:
             and self._pending_text_rect is None
             and not self._point_in_selection(event.x, event.y)
         ):
+            self._clear_annotation_selection()
             self._begin_selection_drag(event, reselecting=True)
             return True
         elif event.button == 1 and self._active_tool == "box" and self._point_in_selection(event.x, event.y):
+            self._clear_annotation_selection()
             self._dragging = True
             self._gesture_kind = "box"
             self._start_x = event.x
@@ -1052,16 +1133,18 @@ class AreaSelector:
             self._end_y = event.y
             log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
             self._update_overlay_geometry()
-        elif event.button == 1 and self._active_tool == "text" and self._point_in_selection(event.x, event.y):
-            self._dragging = True
-            self._gesture_kind = "text"
-            self._start_x = event.x
-            self._start_y = event.y
-            self._end_x = event.x
-            self._end_y = event.y
-            log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
-            self._update_overlay_geometry()
+        elif (
+            event.button == 1
+            and self._active_tool == "text"
+            and self._pending_text_rect is None
+            and self._point_in_selection(event.x, event.y)
+        ):
+            # Empty area under text tool → click-to-type (no box drag).
+            self._clear_annotation_selection()
+            if self._begin_text_entry_at(event.x, event.y):
+                return True
         elif event.button == 1 and self._active_tool in ("line", "arrow") and self._point_in_selection(event.x, event.y):
+            self._clear_annotation_selection()
             self._dragging = True
             self._gesture_kind = self._active_tool
             self._start_x = event.x
@@ -1071,16 +1154,44 @@ class AreaSelector:
             log_debug_event(logger, "selector_drag_started", gesture=self._gesture_kind, x=int(event.x), y=int(event.y))
             self._update_overlay_geometry()
         elif event.button == 1 and self._active_tool == "number":
+            self._clear_annotation_selection()
             if self._add_number_stamp_at(event.x, event.y):
                 self._update_idle_cursor(event.x, event.y)
                 return True
+        elif (
+            event.button == 1
+            and self._active_tool is None
+            and self._point_in_selection(event.x, event.y)
+        ):
+            # Click empty interior with no tool: deselect text, keep selection.
+            self._clear_annotation_selection()
+            if self._drawing is not None:
+                self._drawing.queue_draw()
         elif event.button == 3:
-            if not self._in_run:
-                return True
-            self._result = None
-            self._Gtk.main_quit()
-            return True
+            return self._handle_right_click(event.x, event.y)
         return False
+
+    def _handle_right_click(self, x: float | None = None, y: float | None = None) -> bool:
+        """Right-click: never hard-exit when the click targets text editing.
+
+        - Text editor open → cancel entry only (keep selection session)
+        - Click on placed text → delete that annotation
+        - Elsewhere → cancel the whole screenshot (historical behavior)
+        """
+        if not self._in_run:
+            return True
+        if self._pending_text_rect is not None:
+            self._cancel_text_entry()
+            return True
+        if x is not None and y is not None:
+            text_index = self._hit_text_annotation(x, y)
+            if text_index is not None:
+                self._selected_annotation_index = text_index
+                self._delete_selected_annotation()
+                return True
+        self._result = None
+        self._Gtk.main_quit()
+        return True
 
     def _on_button_release(self, widget, event):
         if event.button == 1 and self._dragging:
@@ -1095,7 +1206,7 @@ class AreaSelector:
             w = int(abs(self._end_x - self._start_x))
             h = int(abs(self._end_y - self._start_y))
 
-            if self._gesture_kind in {"select", "box", "text"} and (w < 4 or h < 4):
+            if self._gesture_kind in {"select", "box"} and (w < 4 or h < 4):
                 self._dragging = False
                 self._gesture_kind = None
                 self._selection_drag_origin = None
@@ -1118,6 +1229,7 @@ class AreaSelector:
                 if self._reselecting:
                     self._annotations.clear()
                     self._next_number_stamp_value = 1
+                    self._clear_annotation_selection()
                 self._selection_rect = (x, y, w, h)
                 self._result = self._selection_rect
                 log_event(logger, "selector_selection_created", rect=self._selection_rect)
@@ -1136,10 +1248,6 @@ class AreaSelector:
                             color=self._selected_color(),
                         )
                     )
-            elif self._gesture_kind == "text":
-                text_rect = self._normalized_text_rect_within_selection((x, y, w, h))
-                if text_rect is not None:
-                    self._show_text_entry(text_rect)
             elif self._gesture_kind == "line":
                 annotation = self._relative_line_within_selection(
                     (self._start_x, self._start_y),
@@ -1154,6 +1262,10 @@ class AreaSelector:
                 )
                 if annotation is not None:
                     self._annotations.append(annotation)
+            elif self._gesture_kind == "annotation-move":
+                self._update_text_annotation_drag()
+                self._annotation_drag_index = None
+                self._annotation_drag_offset = None
             elif self._gesture_kind and self._gesture_kind.startswith("selection-"):
                 self._update_selection_drag()
                 self._selection_drag_origin = None
@@ -1209,6 +1321,8 @@ class AreaSelector:
         if self._gesture_kind and self._gesture_kind.startswith("selection-"):
             self._update_selection_drag()
             self._position_toolbar()
+        elif self._gesture_kind == "annotation-move":
+            self._update_text_annotation_drag()
         self._queue_drag_redraw(previous_rect)
         self._motion_flush_count += 1
         log_debug_duration(
@@ -1225,6 +1339,28 @@ class AreaSelector:
 
     def _on_key_press(self, widget, event):
         from gi.repository import Gdk
+        # Text entry owns Escape / Ctrl+Enter so typing does not cancel the
+        # whole screenshot session.
+        if self._pending_text_rect is not None:
+            if event.keyval == Gdk.KEY_Escape:
+                self._cancel_text_entry()
+                return True
+            if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+                if event.state & Gdk.ModifierType.CONTROL_MASK:
+                    self._commit_text_entry()
+                    return True
+                # Bare Enter: let TextView insert a newline.
+                return False
+        # Selected placed text: Delete/Backspace removes; Escape deselects.
+        if self._selected_annotation_index is not None:
+            if event.keyval in (Gdk.KEY_Delete, Gdk.KEY_KP_Delete, Gdk.KEY_BackSpace):
+                self._delete_selected_annotation()
+                return True
+            if event.keyval == Gdk.KEY_Escape:
+                self._clear_annotation_selection()
+                if self._drawing is not None:
+                    self._drawing.queue_draw()
+                return True
         if event.keyval == Gdk.KEY_Escape:
             if not self._in_run:
                 return True
@@ -1235,11 +1371,9 @@ class AreaSelector:
 
     def _on_window_button_press(self, widget, event):
         if event.button == 3:
-            if not self._in_run:
-                return True
-            self._result = None
-            self._Gtk.main_quit()
-            return True
+            # Prefer drawing-area coordinates when available; window events use
+            # the same origin for our fullscreen overlay.
+            return self._handle_right_click(getattr(event, "x", None), getattr(event, "y", None))
         return False
 
     def _on_tool_toggled(self, button, tool_name: str) -> None:
@@ -1292,6 +1426,11 @@ class AreaSelector:
     def _on_undo(self, button) -> None:
         if self._annotations:
             self._annotations.pop()
+            if self._selected_annotation_index is not None:
+                if self._selected_annotation_index >= len(self._annotations):
+                    self._selected_annotation_index = (
+                        len(self._annotations) - 1 if self._annotations else None
+                    )
             if self._drawing is not None:
                 self._drawing.queue_draw()
 
@@ -1378,6 +1517,110 @@ class AreaSelector:
 
     def _can_edit_selection(self) -> bool:
         return self._active_tool is None and self._pending_text_rect is None
+
+    def _clear_annotation_selection(self) -> None:
+        self._selected_annotation_index = None
+        self._annotation_drag_index = None
+        self._annotation_drag_offset = None
+
+    def _hit_text_annotation(self, x_abs: float, y_abs: float) -> int | None:
+        if self._selection_rect is None:
+            return None
+        sx, sy, _, _ = self._selection_rect
+        return hit_text_annotation_index(
+            self._annotations,
+            (int(x_abs - sx), int(y_abs - sy)),
+        )
+
+    def _begin_text_annotation_drag(self, event, index: int) -> None:
+        if self._selection_rect is None:
+            return
+        ann = self._annotations[index]
+        if not isinstance(ann, TextAnnotation):
+            return
+        sx, sy, _, _ = self._selection_rect
+        ax, ay, _, _ = ann.rect
+        self._selected_annotation_index = index
+        self._annotation_drag_index = index
+        self._annotation_drag_offset = (event.x - (sx + ax), event.y - (sy + ay))
+        self._dragging = True
+        self._gesture_kind = "annotation-move"
+        self._start_x = event.x
+        self._start_y = event.y
+        self._end_x = event.x
+        self._end_y = event.y
+        self._set_window_cursor("grabbing")
+        if self._drawing is not None:
+            self._drawing.queue_draw()
+        log_debug_event(
+            logger,
+            "selector_drag_started",
+            gesture=self._gesture_kind,
+            index=index,
+            x=int(event.x),
+            y=int(event.y),
+        )
+
+    def _update_text_annotation_drag(self) -> None:
+        if (
+            self._selection_rect is None
+            or self._annotation_drag_index is None
+            or self._annotation_drag_offset is None
+        ):
+            return
+        index = self._annotation_drag_index
+        if index < 0 or index >= len(self._annotations):
+            return
+        ann = self._annotations[index]
+        if not isinstance(ann, TextAnnotation):
+            return
+        sx, sy, sw, sh = self._selection_rect
+        ox, oy = self._annotation_drag_offset
+        _, _, tw, th = ann.rect
+        new_x = int(self._end_x - sx - ox)
+        new_y = int(self._end_y - sy - oy)
+        new_rect = clamp_rect_in_bounds((new_x, new_y, tw, th), (sw, sh))
+        self._annotations[index] = TextAnnotation(
+            rect=new_rect,
+            text=ann.text,
+            color=ann.color,
+            font_size=ann.font_size,
+        )
+        self._selected_annotation_index = index
+        if self._drawing is not None:
+            self._drawing.queue_draw()
+
+    def _delete_selected_annotation(self) -> None:
+        index = self._selected_annotation_index
+        if index is None or index < 0 or index >= len(self._annotations):
+            self._clear_annotation_selection()
+            return
+        del self._annotations[index]
+        self._clear_annotation_selection()
+        if self._drawing is not None:
+            self._drawing.queue_draw()
+        log_event(logger, "selector_annotation_deleted", remaining=len(self._annotations))
+
+    def _draw_selected_text_chrome(self, cr) -> None:
+        """Dashed highlight around the selected text annotation."""
+        if self._selection_rect is None or self._selected_annotation_index is None:
+            return
+        index = self._selected_annotation_index
+        if index < 0 or index >= len(self._annotations):
+            return
+        ann = self._annotations[index]
+        if not isinstance(ann, TextAnnotation):
+            return
+        sx, sy, _, _ = self._selection_rect
+        x, y, w, h = ann.rect
+        cr.save()
+        cr.set_source_rgba(0.15, 0.45, 0.95, 0.95)
+        cr.set_line_width(1.5)
+        cr.set_dash([4, 3], 0)
+        cr.rectangle(sx + x + 0.5, sy + y + 0.5, max(1, w - 1), max(1, h - 1))
+        cr.stroke()
+        cr.set_dash([], 0)
+        cr.restore()
 
     def _selection_hit_test(self, x: float, y: float) -> str | None:
         if self._selection_rect is None:
@@ -1512,24 +1755,6 @@ class AreaSelector:
             self._drawing.queue_draw()
         return True
 
-    def _normalized_text_rect_within_selection(
-        self,
-        rect: tuple[int, int, int, int],
-    ) -> tuple[int, int, int, int] | None:
-        text_rect = self._relative_rect_within_selection(rect)
-        if text_rect is None or self._selection_rect is None:
-            return None
-
-        x, y, w, h = text_rect
-        _, _, sw, sh = self._selection_rect
-        min_width = min(160, sw)
-        min_height = min(40, sh)
-        w = max(w, min_width)
-        h = max(h, min_height)
-        x = min(x, max(0, sw - w))
-        y = min(y, max(0, sh - h))
-        return (x, y, w, h)
-
     def _draw_annotations(self, cr) -> None:
         if self._selection_rect is None:
             return
@@ -1548,10 +1773,19 @@ class AreaSelector:
             return self._screen_rect_from_selection_relative(
                 self._relative_rect_within_selection(drag_rect)
             )
-        if gesture_kind == "text":
-            return self._screen_rect_from_selection_relative(
-                self._normalized_text_rect_within_selection(drag_rect)
-            )
+        if gesture_kind == "annotation-move":
+            index = self._annotation_drag_index
+            if (
+                index is None
+                or index < 0
+                or index >= len(self._annotations)
+                or self._selection_rect is None
+            ):
+                return None
+            ann = self._annotations[index]
+            if not isinstance(ann, TextAnnotation):
+                return None
+            return self._screen_rect_from_selection_relative(ann.rect)
         if gesture_kind in ("line", "arrow"):
             if self._selection_rect is None:
                 return None
@@ -1583,6 +1817,10 @@ class AreaSelector:
         if self._gesture_kind and self._gesture_kind.startswith("selection-"):
             for rect in (previous_rect, self._selection_rect):
                 self._queue_padded_rect_redraw(rect)
+            return
+        if self._gesture_kind == "annotation-move":
+            # Full redraw is simpler: text glyphs leave irregular dirty regions.
+            self._drawing.queue_draw()
             return
         for rect in (
             previous_rect,
@@ -1669,10 +1907,19 @@ class AreaSelector:
         self._set_window_cursor(cursor_name)
 
     def _update_idle_cursor(self, x: float, y: float) -> None:
+        if self._pending_text_rect is not None:
+            self._set_window_cursor(None)
+            return
+        if self._active_tool in (None, "text") and self._hit_text_annotation(x, y) is not None:
+            self._set_window_cursor("grab")
+            return
+        if self._active_tool == "text":
+            self._set_window_cursor("text")
+            return
         if self._active_tool in ("box", "line", "arrow", "number"):
             self._set_window_cursor("crosshair")
             return
-        if self._active_tool is not None or self._pending_text_rect is not None:
+        if self._active_tool is not None:
             self._set_window_cursor(None)
             return
         self._apply_selection_cursor(self._selection_hit_test(x, y))
@@ -1730,7 +1977,12 @@ class AreaSelector:
 
     def _set_active_tool(self, tool_name: str | None) -> None:
         self._active_tool = tool_name
-        cursor_name = "crosshair" if tool_name in ("box", "line", "arrow", "number") else None
+        if tool_name == "text":
+            cursor_name = "text"
+        elif tool_name in ("box", "line", "arrow", "number"):
+            cursor_name = "crosshair"
+        else:
+            cursor_name = None
         self._set_window_cursor(cursor_name)
 
     def _set_window_cursor(self, cursor_name: str | None) -> None:
@@ -1742,6 +1994,66 @@ class AreaSelector:
         )
         self._window.get_window().set_cursor(cursor)
 
+    def _begin_text_entry_at(self, x_abs: float, y_abs: float) -> bool:
+        """Click-to-type: open the floating editor at the given screen point."""
+        if self._selection_rect is None:
+            return False
+        sx, sy, sw, sh = self._selection_rect
+        placement = click_text_placement_rect(
+            (sw, sh),
+            (int(x_abs - sx), int(y_abs - sy)),
+            default_w=self._TEXT_EDITOR_DEFAULT_W,
+            default_h=self._TEXT_EDITOR_DEFAULT_H,
+        )
+        if placement is None:
+            return False
+        self._show_text_entry(placement)
+        log_event(
+            logger,
+            "selector_text_entry_opened",
+            rect=placement,
+            selection=self._selection_rect,
+        )
+        return True
+
+    def _text_font_desc(self) -> str:
+        return text_font_description(self._text_font_size)
+
+    def _apply_text_font_size(self, font_size: int, *, update_buttons: bool = True) -> None:
+        size = max(8, min(72, int(font_size)))
+        self._text_font_size = size
+        if self._text_view is not None:
+            self._text_view.override_font(
+                self._Pango.FontDescription(text_font_description(size))
+            )
+        if update_buttons:
+            for button_size, button in self._text_size_buttons.items():
+                # Avoid re-entrant toggled handlers while syncing UI.
+                handler_blocked = False
+                try:
+                    button.handler_block_by_func(self._on_text_font_size_toggled)
+                    handler_blocked = True
+                except TypeError:
+                    pass
+                button.set_active(button_size == size)
+                ctx = button.get_style_context()
+                if button_size == size:
+                    ctx.add_class("active")
+                else:
+                    ctx.remove_class("active")
+                if handler_blocked:
+                    button.handler_unblock_by_func(self._on_text_font_size_toggled)
+
+    def _on_text_font_size_toggled(self, button, font_size: int) -> None:
+        if not button.get_active():
+            # Keep at least one size selected.
+            if self._text_font_size == font_size:
+                button.set_active(True)
+            return
+        self._apply_text_font_size(font_size, update_buttons=True)
+        if self._text_view is not None:
+            self._text_view.grab_focus()
+
     def _show_text_entry(self, text_rect: tuple[int, int, int, int]) -> None:
         if (
             self._selection_rect is None
@@ -1752,36 +2064,67 @@ class AreaSelector:
             or self._container is None
         ):
             return
-        sx, sy, sw, sh = self._selection_rect
-        tx, ty, tw, th = text_rect
-        self._text_editor_box.set_size_request(tw, th)
+        sx, sy, _, _ = self._selection_rect
+        tx, ty, _, _ = text_rect
+        # Floating editor uses a comfortable fixed size and may extend outside
+        # a small selection — only clamp to the overlay window.
+        editor_w = self._TEXT_EDITOR_DEFAULT_W
+        # Height scales lightly with font so the caret area matches final text.
+        editor_h = max(self._TEXT_EDITOR_DEFAULT_H, self._text_font_size + 20)
+        self._text_editor_box.set_size_request(editor_w, editor_h)
+        self._apply_text_font_size(self._text_font_size, update_buttons=True)
         _, natural = self._text_editor.get_preferred_size()
         editor_x = sx + tx
         editor_y = sy + ty
-        if editor_x + natural.width > sx + sw:
-            editor_x = max(sx, sx + sw - natural.width)
-        if editor_y + natural.height > sy + sh:
-            editor_y = max(sy, sy + sh - natural.height)
+        if self._window is not None:
+            ww = max(1, self._window.get_allocated_width())
+            wh = max(1, self._window.get_allocated_height())
+            editor_x = max(0, min(editor_x, ww - natural.width))
+            editor_y = max(0, min(editor_y, wh - natural.height))
         self._pending_text_rect = text_rect
         self._text_buffer.set_text("")
         self._container.move(self._text_editor, editor_x, editor_y)
         self._text_editor.show_all()
         self._text_view.grab_focus()
+        if self._drawing is not None:
+            self._drawing.queue_draw()
 
     def _commit_text_entry(self, widget=None) -> None:
-        if self._text_buffer is None or self._pending_text_rect is None:
+        if (
+            self._text_buffer is None
+            or self._pending_text_rect is None
+            or self._selection_rect is None
+        ):
             return
         start_iter = self._text_buffer.get_start_iter()
         end_iter = self._text_buffer.get_end_iter()
         text = self._text_buffer.get_text(start_iter, end_iter, True).strip()
         if text:
+            ox, oy, pw, _ph = self._pending_text_rect
+            _, _, sw, sh = self._selection_rect
+            # Wrap within the remaining selection width from the anchor so the
+            # final crop does not silently drop overflowing glyphs.
+            max_width = max(1, min(pw, sw - ox))
+            tw, th = measure_text_pixel_size(
+                text,
+                max_width,
+                font_size=self._text_font_size,
+                padding_x=self._TEXT_PADDING_X,
+                padding_y=self._TEXT_PADDING_Y,
+            )
+            # Keep the text box inside the selection bounds.
+            tw = min(tw, max(1, sw - ox))
+            th = min(th, max(1, sh - oy))
             self._annotations.append(
                 TextAnnotation(
-                    rect=self._pending_text_rect,
+                    rect=(ox, oy, tw, th),
                     text=text,
                     color=self._selected_color(),
+                    font_size=self._text_font_size,
                 )
             )
+            # Keep the new text selected so it can be dragged or deleted next.
+            self._selected_annotation_index = len(self._annotations) - 1
             if self._drawing is not None:
                 self._drawing.queue_draw()
         self._finish_text_entry()
@@ -1821,8 +2164,9 @@ class AreaSelector:
 
     def _finish_text_entry(self) -> None:
         self._hide_text_editor()
+        # Keep the text tool armed for another click (same as number stamps).
         if self._text_button is not None and self._text_button.get_active():
-            self._text_button.set_active(False)
+            self._set_active_tool("text")
         else:
             self._set_active_tool(None)
 
@@ -1832,3 +2176,4 @@ class AreaSelector:
         self._pending_text_rect = None
         if self._drawing is not None:
             self._drawing.grab_focus()
+            self._drawing.queue_draw()

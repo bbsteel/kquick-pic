@@ -35,6 +35,7 @@ class TextAnnotation:
     rect: tuple[int, int, int, int]   # (x, y, width, height) — selection-relative
     text: str
     color: tuple[int, int, int]       # (r, g, b) 0-255
+    font_size: int = 12               # point size; matches editor + final render
 
 
 @dataclass(frozen=True)
@@ -60,13 +61,22 @@ class NumberStampAnnotation:
 
 # ---- shared Cairo rendering ----
 
-_TEXT_FONT = "Sans 20"
-_TEXT_PADDING_X = 8
-_TEXT_PADDING_Y = 6
+_TEXT_FONT_FAMILY = "Sans"
+_DEFAULT_TEXT_FONT_SIZE = 12
+_TEXT_FONT = f"{_TEXT_FONT_FAMILY} {_DEFAULT_TEXT_FONT_SIZE}"
+_TEXT_PADDING_X = 6
+_TEXT_PADDING_Y = 4
 _ARROW_ANGLE = math.radians(22.5)
 _ARROW_LENGTH = 12
 _STAMP_FONT = "Sans Bold 17"
 _STAMP_RADIUS = 14
+
+
+def text_font_description(font_size: int | None = None) -> str:
+    """Pango font description shared by the text editor and final render."""
+    size = int(font_size) if font_size is not None else _DEFAULT_TEXT_FONT_SIZE
+    size = max(8, min(72, size))
+    return f"{_TEXT_FONT_FAMILY} {size}"
 
 # ---- 颜色辅助 ----
 
@@ -125,6 +135,108 @@ def _draw_rectangle_annotation(cr, annotation, origin_x, origin_y, dashed=False)
     cr.set_dash([], 0)
 
 
+def measure_text_pixel_size(
+    text: str,
+    max_width: int,
+    *,
+    font: str | None = None,
+    font_size: int | None = None,
+    padding_x: int = _TEXT_PADDING_X,
+    padding_y: int = _TEXT_PADDING_Y,
+) -> tuple[int, int]:
+    """Return (width, height) including padding for laid-out annotation text."""
+    import cairo
+    import gi
+
+    gi.require_version("Pango", "1.0")
+    gi.require_version("PangoCairo", "1.0")
+    from gi.repository import Pango, PangoCairo
+
+    font_desc = font if font is not None else text_font_description(font_size)
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
+    cr = cairo.Context(surface)
+    layout = PangoCairo.create_layout(cr)
+    layout.set_text(text, -1)
+    layout.set_font_description(Pango.FontDescription(font_desc))
+    content_width = max(1, int(max_width) - 2 * padding_x)
+    layout.set_width(content_width * Pango.SCALE)
+    layout.set_wrap(Pango.WrapMode.WORD_CHAR)
+    text_w, text_h = layout.get_pixel_size()
+    return (
+        max(1, text_w + 2 * padding_x),
+        max(1, text_h + 2 * padding_y),
+    )
+
+
+def clamp_rect_in_bounds(
+    rect: tuple[int, int, int, int],
+    bounds: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """Clamp a rect so it stays fully inside (0,0)-(sw,sh)."""
+    x, y, w, h = rect
+    sw, sh = bounds
+    w = max(1, min(w, sw))
+    h = max(1, min(h, sh))
+    x = max(0, min(x, sw - w))
+    y = max(0, min(y, sh - h))
+    return (int(x), int(y), int(w), int(h))
+
+
+def hit_text_annotation_index(
+    annotations: list,
+    point_rel: tuple[int, int],
+) -> int | None:
+    """Topmost TextAnnotation index containing the selection-relative point."""
+    px, py = point_rel
+    for index in range(len(annotations) - 1, -1, -1):
+        ann = annotations[index]
+        if not isinstance(ann, TextAnnotation):
+            continue
+        x, y, w, h = ann.rect
+        if x <= px <= x + w and y <= py <= y + h:
+            return index
+    return None
+
+
+def click_text_placement_rect(
+    selection_size: tuple[int, int],
+    click_rel: tuple[int, int],
+    *,
+    default_w: int = 160,
+    default_h: int = 36,
+    min_w: int = 48,
+) -> tuple[int, int, int, int] | None:
+    """Selection-relative rect for click-to-type text placement.
+
+    Anchor stays at the click when possible. For clicks near the right/bottom
+    edge of a small selection, the origin shifts so the rect stays inside.
+    """
+    sw, sh = selection_size
+    x, y = int(click_rel[0]), int(click_rel[1])
+    if sw <= 0 or sh <= 0 or x < 0 or y < 0 or x >= sw or y >= sh:
+        return None
+
+    # Prefer a comfortable wrap width, but never exceed the selection.
+    target_w = min(default_w, sw)
+    if target_w >= min_w and sw - x < min_w:
+        x = max(0, sw - target_w)
+    w = min(target_w, sw - x)
+    if w < 1:
+        x = 0
+        w = sw
+
+    target_h = min(default_h, sh)
+    min_h = min(24, sh)
+    if target_h >= min_h and sh - y < min_h:
+        y = max(0, sh - target_h)
+    h = min(target_h, sh - y)
+    if h < 1:
+        y = 0
+        h = sh
+
+    return (x, y, int(w), int(h))
+
+
 def _draw_text_annotation(cr, annotation, origin_x, origin_y) -> None:
     import gi
     gi.require_version("Pango", "1.0")
@@ -132,9 +244,10 @@ def _draw_text_annotation(cr, annotation, origin_x, origin_y) -> None:
     from gi.repository import Pango, PangoCairo
 
     x, y, w, h = annotation.rect
+    font_size = getattr(annotation, "font_size", _DEFAULT_TEXT_FONT_SIZE)
     layout = PangoCairo.create_layout(cr)
     layout.set_text(annotation.text, -1)
-    layout.set_font_description(Pango.FontDescription(_TEXT_FONT))
+    layout.set_font_description(Pango.FontDescription(text_font_description(font_size)))
     layout.set_width(max(1, w - _TEXT_PADDING_X * 2) * Pango.SCALE)
     layout.set_wrap(Pango.WrapMode.WORD_CHAR)
     cr.save()
