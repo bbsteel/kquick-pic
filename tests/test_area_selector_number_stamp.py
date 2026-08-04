@@ -14,6 +14,7 @@ def _make_selector():
     selector = object.__new__(AreaSelector)
     selector._selection_rect = (100, 200, 300, 180)
     selector._annotations = []
+    selector._selected_annotation_index = None
     selector._drawing = FakeDrawing()
     selector._selected_color_value = (255, 0, 0)
     selector._next_number_stamp_value = 1

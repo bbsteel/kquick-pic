@@ -2073,6 +2073,12 @@ class AreaSelector:
         editor_h = max(self._TEXT_EDITOR_DEFAULT_H, self._text_font_size + 20)
         self._text_editor_box.set_size_request(editor_w, editor_h)
         self._apply_text_font_size(self._text_font_size, update_buttons=True)
+        self._pending_text_rect = text_rect
+        self._text_buffer.set_text("")
+        # Show before measuring: a hidden widget's get_preferred_size() is
+        # 0x0, which would disable the edge clamp below and push the
+        # confirm/cancel buttons off-screen near the right/bottom edge.
+        self._text_editor.show_all()
         _, natural = self._text_editor.get_preferred_size()
         editor_x = sx + tx
         editor_y = sy + ty
@@ -2081,10 +2087,7 @@ class AreaSelector:
             wh = max(1, self._window.get_allocated_height())
             editor_x = max(0, min(editor_x, ww - natural.width))
             editor_y = max(0, min(editor_y, wh - natural.height))
-        self._pending_text_rect = text_rect
-        self._text_buffer.set_text("")
         self._container.move(self._text_editor, editor_x, editor_y)
-        self._text_editor.show_all()
         self._text_view.grab_focus()
         if self._drawing is not None:
             self._drawing.queue_draw()
