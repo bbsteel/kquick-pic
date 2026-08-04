@@ -6,6 +6,7 @@ from PIL import Image
 
 from kquick_pic.icon import (
     generate_icon,
+    apply_degraded_badge,
     build_icon_pixmaps,
     _image_to_argb32,
     get_icon_path,
@@ -47,6 +48,28 @@ class TestGenerateIcon:
         # Check that at least some pixels have non-zero alpha
         alpha_values = rgba[3::4]
         assert any(a > 0 for a in alpha_values)
+
+
+class TestDegradedBadge:
+    def test_badge_keeps_size_and_mode(self):
+        base = generate_icon(32, "v1")
+        badged = apply_degraded_badge(base)
+        assert badged.size == base.size
+        assert badged.mode == "RGBA"
+
+    def test_badge_changes_bottom_right_pixels(self):
+        base = generate_icon(48, "v1")
+        badged = apply_degraded_badge(base)
+        # Badge center for 48px: radius=12, margin=3 → (33, 33).
+        assert base.getpixel((33, 33)) != badged.getpixel((33, 33))
+        # Badge fill is the orange-red accent.
+        assert badged.getpixel((33, 33))[0] > 180
+
+    def test_build_icon_pixmaps_degraded_differs(self):
+        normal = build_icon_pixmaps(theme="v1", sizes=(24,), degraded=False)
+        degraded = build_icon_pixmaps(theme="v1", sizes=(24,), degraded=True)
+        assert normal[0][0] == degraded[0][0] == 24
+        assert normal[0][2] != degraded[0][2]
 
 
 class TestBuildIconPixmaps:

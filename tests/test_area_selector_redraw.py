@@ -1,3 +1,5 @@
+import inspect
+
 from kquick_pic.area_selector import AreaSelector
 
 
@@ -35,6 +37,13 @@ def _covers(queued, rect):
     qx, qy, qw, qh = queued
     rx, ry, rw, rh = rect
     return qx <= rx and qy <= ry and qx + qw >= rx + rw and qy + qh >= ry + rh
+
+
+def test_overlay_draw_never_clears_argb_surface():
+    source = inspect.getsource(AreaSelector._on_draw_overlay)
+
+    assert "OPERATOR_CLEAR" not in source
+    assert "OPERATOR_OVER" in source
 
 
 def test_selection_drag_redraw_covers_old_and_new_selection_bodies():

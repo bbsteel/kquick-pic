@@ -117,6 +117,8 @@ class TrayManager:
         self._sni = None
         self._menu = None
         self._watcher_iface = None
+        # True when capture fell back from KWin ScreenShot2 to XDG portal.
+        self._degraded = False
 
     def start(self) -> None:
         import gi
@@ -181,14 +183,45 @@ class TrayManager:
         self._register_with_watcher()
         logger.info(f"Icon theme switched to {theme}")
 
+    def set_degraded(self, degraded: bool, *, notify: bool = True) -> None:
+        """Mark capture quality degraded (Portal fallback) on the tray icon.
+
+        Shows a bottom-right exclamation badge and a degraded tooltip so the
+        user can see the silent KWin→Portal downgrade without reading logs.
+        """
+        if bool(degraded) == self._degraded:
+            return
+        was_degraded = self._degraded
+        self._degraded = bool(degraded)
+        logger.info("Tray capture degraded=%s", self._degraded)
+        if self._sni is not None:
+            from kquick_pic.icon import build_icon_pixmaps
+
+            self._sni._update_icon(
+                "",
+                "",
+                build_icon_pixmaps(
+                    theme=self._config.icon_theme,
+                    degraded=self._degraded,
+                ),
+                tooltip_body=self._tooltip_body(),
+            )
+        if notify and self._degraded and not was_degraded:
+            self.notify(t("notify.app_name"), t("notify.capture_degraded"))
+
     def update_language(self) -> None:
         if self._Gtk is None:
             return
         self._rebuild_menu()
         if self._sni is not None:
             self._sni._refresh_menu()
-            self._sni._refresh_tooltip()
+            self._sni._refresh_tooltip(self._tooltip_body())
         logger.info("Tray language refreshed")
+
+    def _tooltip_body(self) -> str:
+        if self._degraded:
+            return t("tray.tooltip_degraded")
+        return t("tray.tooltip")
 
     def notify(self, title: str, message: str) -> None:
         try:
@@ -260,7 +293,11 @@ class TrayManager:
             SNI_OBJECT_PATH,
             icon_name="",
             icon_theme_path="",
-            icon_pixmaps=build_icon_pixmaps(theme=theme),
+            icon_pixmaps=build_icon_pixmaps(
+                theme=theme,
+                degraded=self._degraded,
+            ),
+            tooltip_body=self._tooltip_body(),
             on_activate=self._on_activate_dbus,
             on_context_menu=self._on_context_menu_dbus,
             on_settings=self._on_settings_dbus,
@@ -344,12 +381,14 @@ def _create_sni(
     on_settings,
     on_quit,
     on_about=None,
+    tooltip_body: str | None = None,
 ):
     """Factory: creates a D-Bus StatusNotifierItem."""
     import dbus
     import dbus.service
 
     on_about = on_about or (lambda: None)
+    initial_tooltip_body = tooltip_body if tooltip_body is not None else t("tray.tooltip")
 
     class _SNI(dbus.service.Object):
         def __init__(self):
@@ -363,6 +402,7 @@ def _create_sni(
             self._icon_theme_path = dbus.String(icon_theme_path)
             self._menu_path = dbus.ObjectPath(object_path)
             self._menu_revision = dbus.UInt32(1)
+            self._tooltip_body = initial_tooltip_body
             self._icon_pixmaps = dbus.Array(
                 [
                     dbus.Struct(
@@ -385,7 +425,7 @@ def _create_sni(
                     self._icon_name,
                     self._icon_pixmaps,
                     dbus.String("KQuick Pic"),
-                    dbus.String(t("tray.tooltip")),
+                    dbus.String(self._tooltip_body),
                 ),
                 signature=None,
             )
@@ -505,11 +545,19 @@ def _create_sni(
                 "ToolTip": self._tooltip,
             }
 
-        def _update_icon(self, icon_name, icon_theme_path, icon_pixmaps):
+        def _update_icon(
+            self,
+            icon_name,
+            icon_theme_path,
+            icon_pixmaps,
+            tooltip_body: str | None = None,
+        ):
             """Live-update icon properties and emit NewIcon signal."""
             import dbus
             self._icon_name = dbus.String(icon_name)
             self._icon_theme_path = dbus.String(icon_theme_path)
+            if tooltip_body is not None:
+                self._tooltip_body = tooltip_body
             self._icon_pixmaps = dbus.Array(
                 [
                     dbus.Struct(
@@ -578,9 +626,11 @@ def _create_sni(
             self._menu_revision = dbus.UInt32(int(self._menu_revision) + 1)
             self.LayoutUpdated(self._menu_revision, dbus.Int32(0))
 
-        def _refresh_tooltip(self):
+        def _refresh_tooltip(self, tooltip_body: str | None = None):
             import dbus
 
+            if tooltip_body is not None:
+                self._tooltip_body = tooltip_body
             self._tooltip = self._build_tooltip()
             self.PropertiesChanged(
                 "org.kde.StatusNotifierItem",

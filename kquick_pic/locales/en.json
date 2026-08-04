@@ -3,11 +3,13 @@
   "name": "English",
   "messages": {
     "tray.tooltip": "Click: screenshot  |  Right: menu",
+    "tray.tooltip_degraded": "Degraded: using Portal capture (bounce / slower). Restart the app to recover.",
     "tray.take_screenshot": "Take Screenshot",
     "tray.settings": "Settings",
     "tray.quit": "Quit",
     "notify.app_name": "KQuick Pic",
     "notify.screenshot_failed": "Screenshot failed",
+    "notify.capture_degraded": "Capture fell back to Portal (badge on tray icon). Restart the app to recover.",
     "notify.history_empty": "No recent screenshots yet",
     "notify.history_failed": "Failed to open recent screenshots",
     "settings.title": "KQuick Pic Settings",

@@ -154,9 +154,11 @@ class KQuickPicApp:
                     include_cursor=self._config.include_cursor,
                 )
             except Exception:
+                self._sync_capture_degraded()
                 self._area_selector.destroy()
                 self._area_selector = None
                 raise
+            self._sync_capture_degraded()
             if selection is None:
                 log_duration(logger, "screenshot_cancelled", flow_started_at, source=source)
                 return False
@@ -209,6 +211,14 @@ class KQuickPicApp:
         finally:
             self._screenshot_in_progress = False
         return False
+
+    def _sync_capture_degraded(self) -> None:
+        """Reflect KWin→Portal capture fallback on the tray icon badge."""
+        if self._tray_manager is None or self._area_selector is None:
+            return
+        backend = getattr(self._area_selector, "last_capture_backend", None)
+        # Portal fallback is the degraded path (cursor bounce + slower capture).
+        self._tray_manager.set_degraded(backend == "portal")
 
     def _on_history_triggered(self, *_args) -> None:
         log_event(logger, "history_triggered")

@@ -171,15 +171,50 @@ def generate_icon(size: int = 64, theme: str = "v2") -> Image.Image:
     return gen(size)
 
 
+def apply_degraded_badge(image: Image.Image) -> Image.Image:
+    """Overlay a bottom-right exclamation badge (capture degraded / portal fallback)."""
+    img = image.convert("RGBA").copy()
+    draw = ImageDraw.Draw(img)
+    size = img.width
+    radius = max(4, size // 4)
+    margin = max(1, size // 16)
+    cx = size - radius - margin
+    cy = size - radius - margin
+    outline = max(1, size // 32)
+    draw.ellipse(
+        [cx - radius, cy - radius, cx + radius, cy + radius],
+        fill=(230, 90, 40, 255),
+        outline=(90, 28, 12, 255),
+        width=outline,
+    )
+    # Exclamation mark: vertical bar + dot (readable down to ~16px).
+    bar_half = max(1, radius // 5)
+    draw.rectangle(
+        [cx - bar_half, cy - radius // 2, cx + bar_half, cy + radius // 8],
+        fill=(255, 255, 255, 255),
+    )
+    dot = max(1, bar_half)
+    draw.ellipse(
+        [cx - dot, cy + radius // 3, cx + dot, cy + radius // 3 + 2 * dot],
+        fill=(255, 255, 255, 255),
+    )
+    return img
+
+
 def build_icon_pixmaps(
     theme: str = "v2",
     sizes: tuple[int, ...] = (16, 22, 24, 32, 48, 64),
+    *,
+    degraded: bool = False,
 ) -> list[tuple[int, int, bytes]]:
     """Return tray icon pixmaps encoded as ARGB32 for StatusNotifierItem."""
-    return [
-        (size, size, _image_to_argb32(generate_icon(size, theme)))
-        for size in sizes
-    ]
+    pixmaps: list[tuple[int, int, bytes]] = []
+    for size in sizes:
+        image = generate_icon(size, theme)
+        if degraded:
+            image = apply_degraded_badge(image)
+        pixmaps.append((size, size, _image_to_argb32(image)))
+    return pixmaps
 
 
 def _image_to_argb32(image: Image.Image) -> bytes:

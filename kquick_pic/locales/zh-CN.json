@@ -3,11 +3,13 @@
   "name": "简体中文",
   "messages": {
     "tray.tooltip": "左键：截图  |  右键：菜单",
+    "tray.tooltip_degraded": "体验降级：已回退 Portal 截图（弹跳/更慢）。重启应用通常可恢复。",
     "tray.take_screenshot": "截图",
     "tray.settings": "设置",
     "tray.quit": "退出",
     "notify.app_name": "KQuick Pic",
     "notify.screenshot_failed": "截图失败",
+    "notify.capture_degraded": "截图已降级为 Portal（图标带感叹号）。重启应用通常可恢复。",
     "notify.history_empty": "还没有最近截图",
     "notify.history_failed": "打开最近截图失败",
     "settings.title": "KQuick Pic 设置",

@@ -209,6 +209,9 @@ class AreaSelector:
         self._background_image_widget = None
         self._in_run = False
         self._include_cursor = True
+        # Last background capture backend: "kwin" | "portal" | "mss" | None.
+        # App uses this to mark tray degraded when Portal fallback is active.
+        self.last_capture_backend: str | None = None
 
     def prepare(self) -> None:
         """Build the overlay window ahead of the first run().
@@ -240,6 +243,7 @@ class AreaSelector:
         if os.environ.get("WAYLAND_DISPLAY"):
             try:
                 screenshot_path, pixbuf = self._capture_background_kwin(capture_started_at)
+                self.last_capture_backend = "kwin"
             except Exception:
                 logger.warning(
                     "KWin ScreenShot2 capture failed, falling back to XDG portal "
@@ -248,6 +252,7 @@ class AreaSelector:
                     exc_info=True,
                 )
                 screenshot_path, pixbuf = self._capture_background_wayland(capture_started_at)
+                self.last_capture_backend = "portal"
         else:
             fd, tmp = tempfile.mkstemp(suffix=".png")
             os.close(fd)
@@ -256,12 +261,14 @@ class AreaSelector:
                 raw = sct.grab(sct.monitors[0])
                 img = Image.frombytes("RGB", raw.size, raw.rgb)
             img.save(screenshot_path, format="PNG", compress_level=0)
+            self.last_capture_backend = "mss"
             log_duration(
                 logger,
                 "selector_background_captured",
                 capture_started_at,
                 path=screenshot_path,
                 include_cursor=include_cursor,
+                backend="mss",
             )
 
             pixbuf_started_at = now()
@@ -326,6 +333,9 @@ class AreaSelector:
         # show_all() un-hides the toolbar/palette/text editor; hide them again.
         self._hide_selection_controls()
         self._drawing.grab_focus()
+        # XWayland may initially allocate a transient surface size while KWin
+        # is applying fullscreen. Redraw once the final allocation is ready.
+        self._GLib.idle_add(self._redraw_overlay_idle)
         log_duration(
             logger,
             "selector_overlay_shown",
@@ -391,10 +401,9 @@ class AreaSelector:
         win.set_accept_focus(True)
         win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
 
-        # The overlay relies on OPERATOR_CLEAR writing transparent pixels so the
-        # dim mask can be erased when the selection grows/moves. That only works
-        # on a real ARGB visual — on the default RGB visual CLEAR produces
-        # opaque black and the whole screen goes black after the first draw.
+        # Prefer an ARGB visual for GTK controls. The overlay itself always
+        # repaints the full frozen frame and must not use OPERATOR_CLEAR: on
+        # some XWayland/KWin combinations CLEAR turns the mapped surface black.
         screen = win.get_screen()
         rgba_visual = screen.get_rgba_visual()
         composited = screen.is_composited()
@@ -818,7 +827,11 @@ class AreaSelector:
         shutil.move(portal_path, str(screenshot_path))
 
         log_duration(
-            logger, "selector_background_captured", capture_started_at, path=screenshot_path
+            logger,
+            "selector_background_captured",
+            capture_started_at,
+            path=screenshot_path,
+            backend="portal",
         )
 
         pixbuf_started_at = now()
@@ -867,40 +880,49 @@ class AreaSelector:
         if self._drawing is not None:
             self._drawing.queue_draw()
 
+    def _redraw_overlay_idle(self) -> bool:
+        """Redraw after KWin has settled the fullscreen allocation."""
+        if self._drawing is not None and self._in_run:
+            self._drawing.queue_draw()
+        return False
+
     def _on_draw_overlay(self, widget, cr):
         draw_started_at = now()
         self._draw_count += 1
+        w = widget.get_allocated_width()
+        h = widget.get_allocated_height()
         if not self._first_draw_logged and self._run_started_at:
             self._first_draw_logged = True
-            log_duration(logger, "selector_first_draw", self._run_started_at)
+            pixbuf = self._background_pixbuf
+            log_duration(
+                logger,
+                "selector_first_draw",
+                self._run_started_at,
+                allocated=(w, h),
+                pixbuf=(
+                    (pixbuf.get_width(), pixbuf.get_height())
+                    if pixbuf is not None
+                    else None
+                ),
+                rgba=self._rgba_available,
+            )
 
         # Single DrawingArea paints the entire overlay: frozen screenshot,
         # dim mask outside the selection, then border / handles /
-        # annotations. CLEAR the invalid region first so old mask pixels
-        # don't ghost when the selection grows or moves — requires the
-        # window to be on an ARGB visual, otherwise CLEAR writes opaque
-        # black and we degrade to redrawing without clearing (ghosting
-        # may reappear).
-        #
-        # CRITICAL: always re-paint the freeze frame after CLEAR. CLEAR
-        # erases sibling Gtk.Image pixels on the shared window surface.
-        # If we only paint a semi-transparent dim, the ARGB window becomes
-        # a see-through veil over the *live* desktop — which has already
-        # lost popups, dropdowns, hover, and selection after our overlay
-        # stole focus. The frame captured *before* show_all is the only
-        # correct backdrop (open menus, text highlights, etc.).
-        if self._rgba_available:
-            cr.set_operator(cairo.OPERATOR_CLEAR)
-            cr.paint()
-            cr.set_operator(cairo.OPERATOR_OVER)
-
-        w = widget.get_allocated_width()
-        h = widget.get_allocated_height()
+        # annotations. Never clear the ARGB surface: Cairo CLEAR is rendered
+        # as opaque black on the affected XWayland/KWin path. A full repaint
+        # of the frozen frame already replaces every old mask pixel.
+        cr.set_operator(cairo.OPERATOR_OVER)
 
         if self._background_pixbuf is not None:
             self._Gdk.cairo_set_source_pixbuf(
                 cr, self._background_pixbuf, 0, 0
             )
+            cr.paint()
+        else:
+            # Defensive fallback: a missing frame should be visible as an
+            # application error, not confused with the compositor black bug.
+            cr.set_source_rgb(0.12, 0.14, 0.18)
             cr.paint()
 
         active_rect = self._active_selection_rect_for_draw()
