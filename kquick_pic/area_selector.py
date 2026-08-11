@@ -13,6 +13,7 @@ from kquick_pic.annotations import (
     LineAnnotation,
     ArrowAnnotation,
     NumberStampAnnotation,
+    MosaicAnnotation,
     click_text_placement_rect,
     clamp_rect_in_bounds,
     hit_text_annotation_index,
@@ -218,7 +219,7 @@ class AreaSelector:
         self._selection_rect: tuple[int, int, int, int] | None = None
         self._gesture_kind: str | None = None
         self._annotations: list[
-            RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation | NumberStampAnnotation
+            RectangleAnnotation | TextAnnotation | LineAnnotation | ArrowAnnotation | NumberStampAnnotation | MosaicAnnotation
         ] = []
         self._active_tool: str | None = None
         self._toolbar = None
@@ -236,6 +237,7 @@ class AreaSelector:
         self._line_button = None
         self._arrow_button = None
         self._number_button = None
+        self._mosaic_button = None
         self._color_buttons: dict[str, object] = {}
         self._color_picker_button = None
         self._color_button_icon = None
@@ -419,6 +421,16 @@ class AreaSelector:
             log_duration(logger, "selector_finished", self._run_started_at, result="cancelled")
             return None
         self._screenshot_path = None
+        # Convert screen-anchored mosaic rects to selection-relative so the
+        # final render can use one origin for all annotations. Rects may end
+        # up partially/fully outside the crop; the render clips them.
+        fx, fy, _, _ = self._result
+        final_annotations = [
+            MosaicAnnotation(rect=(a.rect[0] - fx, a.rect[1] - fy, a.rect[2], a.rect[3]))
+            if isinstance(a, MosaicAnnotation)
+            else a
+            for a in self._annotations
+        ]
         log_duration(
             logger,
             "selector_finished",
@@ -431,7 +443,7 @@ class AreaSelector:
         return SelectionResult(
             rect=self._result,
             screenshot_path=screenshot_path,
-            annotations=list(self._annotations),
+            annotations=final_annotations,
             pin=self._result_pin,
         )
 
@@ -565,6 +577,7 @@ class AreaSelector:
         line_button, line_button_icon = _make_tool_button("line", "selector.draw_line", toggle=True)
         arrow_button, arrow_button_icon = _make_tool_button("arrow", "selector.draw_arrow", toggle=True)
         number_button, number_button_icon = _make_tool_button("number", "selector.number_stamp", toggle=True)
+        mosaic_button, mosaic_button_icon = _make_tool_button("mosaic", "selector.mosaic", toggle=True)
         color_picker_button, color_button_icon = _make_tool_button(
             "color", "selector.choose_color", toggle=False, color_provider=self._selected_color
         )
@@ -581,6 +594,7 @@ class AreaSelector:
         line_button.connect("toggled", self._on_tool_toggled, "line")
         arrow_button.connect("toggled", self._on_tool_toggled, "arrow")
         number_button.connect("toggled", self._on_tool_toggled, "number")
+        mosaic_button.connect("toggled", self._on_tool_toggled, "mosaic")
         color_picker_button.connect("clicked", self._toggle_color_palette)
         undo_button.connect("clicked", self._on_undo)
         pin_button.connect("clicked", self._on_pin)
@@ -601,9 +615,10 @@ class AreaSelector:
         line_button.connect("toggled", lambda b: _toggle_active_class(b, line_button_icon))
         arrow_button.connect("toggled", lambda b: _toggle_active_class(b, arrow_button_icon))
         number_button.connect("toggled", lambda b: _toggle_active_class(b, number_button_icon))
+        mosaic_button.connect("toggled", lambda b: _toggle_active_class(b, mosaic_button_icon))
 
         drawing_group = _make_tool_group()
-        for button in (box_button, text_button, line_button, arrow_button, number_button):
+        for button in (box_button, text_button, line_button, arrow_button, number_button, mosaic_button):
             drawing_group.pack_start(button, False, False, 0)
 
         action_group = _make_tool_group()
@@ -706,6 +721,7 @@ class AreaSelector:
         self._line_button = line_button
         self._arrow_button = arrow_button
         self._number_button = number_button
+        self._mosaic_button = mosaic_button
         self._color_picker_button = color_picker_button
         self._color_button_icon = color_button_icon
         self._undo_button = undo_button
@@ -1044,6 +1060,24 @@ class AreaSelector:
                 sx, sy, _, _ = self._selection_rect
                 from kquick_pic.annotations import _draw_rectangle_annotation as _dra
                 _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=False)
+        elif self._dragging and self._gesture_kind == "mosaic":
+            # Gray wash + dashed outline while dragging; the live mosaic
+            # render kicks in on release via render_annotations.
+            preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
+            if preview_rect is not None:
+                sx, sy, _, _ = self._selection_rect
+                px, py, pw, ph = preview_rect
+                cr.save()
+                cr.set_source_rgba(0.5, 0.5, 0.5, 0.35)
+                cr.rectangle(sx + px, sy + py, pw, ph)
+                cr.fill()
+                cr.set_source_rgba(1, 1, 1, 0.9)
+                cr.set_line_width(2)
+                cr.set_dash([6, 4], 0)
+                cr.rectangle(sx + px + 1, sy + py + 1, max(1, pw - 2), max(1, ph - 2))
+                cr.stroke()
+                cr.set_dash([], 0)
+                cr.restore()
         elif self._pending_text_rect is not None:
             sx, sy, _, _ = self._selection_rect
             from kquick_pic.annotations import _draw_rectangle_annotation as _dra
@@ -1123,10 +1157,10 @@ class AreaSelector:
             self._clear_annotation_selection()
             self._begin_selection_drag(event, reselecting=True)
             return True
-        elif event.button == 1 and self._active_tool == "box" and self._point_in_selection(event.x, event.y):
+        elif event.button == 1 and self._active_tool in ("box", "mosaic") and self._point_in_selection(event.x, event.y):
             self._clear_annotation_selection()
             self._dragging = True
-            self._gesture_kind = "box"
+            self._gesture_kind = self._active_tool
             self._start_x = event.x
             self._start_y = event.y
             self._end_x = event.x
@@ -1206,7 +1240,7 @@ class AreaSelector:
             w = int(abs(self._end_x - self._start_x))
             h = int(abs(self._end_y - self._start_y))
 
-            if self._gesture_kind in {"select", "box"} and (w < 4 or h < 4):
+            if self._gesture_kind in {"select", "box", "mosaic"} and (w < 4 or h < 4):
                 self._dragging = False
                 self._gesture_kind = None
                 self._selection_drag_origin = None
@@ -1248,6 +1282,8 @@ class AreaSelector:
                             color=self._selected_color(),
                         )
                     )
+            elif self._gesture_kind == "mosaic":
+                self._add_mosaic_annotation((x, y, w, h))
             elif self._gesture_kind == "line":
                 annotation = self._relative_line_within_selection(
                     (self._start_x, self._start_y),
@@ -1384,6 +1420,7 @@ class AreaSelector:
                 "line": self._line_button,
                 "arrow": self._arrow_button,
                 "number": self._number_button,
+                "mosaic": self._mosaic_button,
             }
             for name, btn in all_tool_buttons.items():
                 if name != tool_name and btn is not None and btn.get_active():
@@ -1491,6 +1528,7 @@ class AreaSelector:
             "_line_button",
             "_arrow_button",
             "_number_button",
+            "_mosaic_button",
         ):
             button = getattr(self, attr_name, None)
             if button is not None and button.get_active():
@@ -1738,6 +1776,22 @@ class AreaSelector:
             color=self._selected_color(),
         )
 
+    def _add_mosaic_annotation(self, abs_rect: tuple[int, int, int, int]) -> None:
+        # Mosaic rects are stored in ABSOLUTE screen coordinates, unlike every
+        # other annotation: the blur belongs to the screen content it covers,
+        # so moving the selection afterwards must leave the mosaic in place.
+        # (Converted back to selection-relative when building the result.)
+        if self._selection_rect is None:
+            return
+        rel_rect = self._relative_rect_within_selection(abs_rect)
+        if rel_rect is None:
+            return
+        sx, sy, _, _ = self._selection_rect
+        rx, ry, rw, rh = rel_rect
+        self._annotations.append(
+            MosaicAnnotation(rect=(sx + rx, sy + ry, rw, rh))
+        )
+
     def _add_number_stamp_at(self, x_abs: float, y_abs: float) -> bool:
         if self._selection_rect is None or not self._point_in_selection(x_abs, y_abs):
             return False
@@ -1760,7 +1814,20 @@ class AreaSelector:
             return
         sx, sy, _, _ = self._selection_rect
         from kquick_pic.annotations import render_annotations
-        render_annotations(cr, self._annotations, origin_x=sx, origin_y=sy)
+        # Mosaics are screen-anchored (origin 0,0); everything else is
+        # selection-relative and moves with the selection.
+        render_annotations(
+            cr,
+            [a for a in self._annotations if isinstance(a, MosaicAnnotation)],
+            origin_x=0,
+            origin_y=0,
+        )
+        render_annotations(
+            cr,
+            [a for a in self._annotations if not isinstance(a, MosaicAnnotation)],
+            origin_x=sx,
+            origin_y=sy,
+        )
 
     def _drag_preview_screen_rect(
         self,
@@ -1769,7 +1836,7 @@ class AreaSelector:
     ) -> tuple[int, int, int, int] | None:
         if gesture_kind == "select":
             return drag_rect
-        if gesture_kind == "box":
+        if gesture_kind in ("box", "mosaic"):
             return self._screen_rect_from_selection_relative(
                 self._relative_rect_within_selection(drag_rect)
             )
@@ -1916,7 +1983,7 @@ class AreaSelector:
         if self._active_tool == "text":
             self._set_window_cursor("text")
             return
-        if self._active_tool in ("box", "line", "arrow", "number"):
+        if self._active_tool in ("box", "line", "arrow", "number", "mosaic"):
             self._set_window_cursor("crosshair")
             return
         if self._active_tool is not None:
@@ -1979,7 +2046,7 @@ class AreaSelector:
         self._active_tool = tool_name
         if tool_name == "text":
             cursor_name = "text"
-        elif tool_name in ("box", "line", "arrow", "number"):
+        elif tool_name in ("box", "line", "arrow", "number", "mosaic"):
             cursor_name = "crosshair"
         else:
             cursor_name = None

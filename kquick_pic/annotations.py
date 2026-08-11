@@ -10,6 +10,7 @@ __all__ = [
     "LineAnnotation",
     "ArrowAnnotation",
     "NumberStampAnnotation",
+    "MosaicAnnotation",
 ]
 
 
@@ -59,6 +60,16 @@ class NumberStampAnnotation:
     color: tuple[int, int, int]       # (r, g, b) 0-255
 
 
+@dataclass(frozen=True)
+class MosaicAnnotation:
+    # Rect is expressed in the caller's render space: the area selector stores
+    # ABSOLUTE screen coordinates and renders mosaics with origin (0, 0) so
+    # they stay glued to the screen content when the selection moves; the
+    # selector converts them to selection-relative before producing the final
+    # SelectionResult.
+    rect: tuple[int, int, int, int]   # (x, y, width, height)
+
+
 # ---- shared Cairo rendering ----
 
 _TEXT_FONT_FAMILY = "Sans"
@@ -100,6 +111,8 @@ def render_annotations(cr, annotations, origin_x=0, origin_y=0) -> None:
             _draw_arrow_annotation(cr, annotation, origin_x, origin_y)
         elif isinstance(annotation, NumberStampAnnotation):
             _draw_number_stamp_annotation(cr, annotation, origin_x, origin_y)
+        elif isinstance(annotation, MosaicAnnotation):
+            _draw_mosaic_annotation(cr, annotation, origin_x, origin_y)
 
 
 # ---- 拖拽预览 ----
@@ -123,6 +136,47 @@ def draw_arrow_preview(cr, start, end, color, origin_x=0, origin_y=0, dashed=Tru
 
 
 # ---- 私有渲染函数 ----
+
+def _draw_mosaic_annotation(cr, annotation, origin_x, origin_y) -> None:
+    """Pixelate the rect in place by resampling the cairo target itself.
+
+    The target already holds the pixels under the annotation (frozen frame in
+    the overlay, cropped image in the final render), so the mosaic always
+    obscures whatever is underneath it at draw time.
+    """
+    import cairo
+
+    x, y, w, h = annotation.rect
+    if w < 2 or h < 2:
+        return
+    block = max(4, min(16, min(w, h) // 8))
+    small_w = max(1, w // block)
+    small_h = max(1, h // block)
+
+    target = cr.get_target()
+    # Copy the region out before overwriting it below.
+    region = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+    rcr = cairo.Context(region)
+    rcr.set_source_surface(target, -origin_x - x, -origin_y - y)
+    rcr.paint()
+
+    small = cairo.ImageSurface(cairo.FORMAT_ARGB32, small_w, small_h)
+    scr = cairo.Context(small)
+    scr.scale(small_w / w, small_h / h)
+    scr.set_source_surface(region, 0, 0)
+    scr.get_source().set_filter(cairo.FILTER_BILINEAR)
+    scr.paint()
+
+    cr.save()
+    cr.rectangle(origin_x + x, origin_y + y, w, h)
+    cr.clip()
+    cr.translate(origin_x + x, origin_y + y)
+    cr.scale(w / small_w, h / small_h)
+    cr.set_source_surface(small, 0, 0)
+    cr.get_source().set_filter(cairo.FILTER_NEAREST)
+    cr.paint()
+    cr.restore()
+
 
 def _draw_rectangle_annotation(cr, annotation, origin_x, origin_y, dashed=False) -> None:
     x, y, w, h = annotation.rect

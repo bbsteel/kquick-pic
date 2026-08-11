@@ -40,6 +40,7 @@
     "selector.draw_line": "Draw line",
     "selector.draw_arrow": "Draw arrow",
     "selector.number_stamp": "Number stamp",
+    "selector.mosaic": "Mosaic",
     "selector.choose_color": "Choose color",
     "selector.font_size": "Size",
     "selector.save": "Save",

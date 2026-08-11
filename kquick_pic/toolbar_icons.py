@@ -71,6 +71,26 @@ def _draw_number(cr: cairo.Context, size: float) -> None:
     cr.stroke()
 
 
+def _draw_mosaic(cr: cairo.Context, size: float) -> None:
+    # 3x3 pixelated grid: filled checker cells + grid outline.
+    inset = TOOLBAR_ICON_INSET + 0.5
+    cell = (size - inset * 2) / 3.0
+    for row in range(3):
+        for col in range(3):
+            if (row + col) % 2 == 0:
+                cr.rectangle(inset + col * cell, inset + row * cell, cell, cell)
+                cr.fill()
+    cr.rectangle(inset, inset, size - inset * 2, size - inset * 2)
+    cr.stroke()
+    for i in (1, 2):
+        cr.move_to(inset + i * cell, inset)
+        cr.line_to(inset + i * cell, size - inset)
+        cr.move_to(inset, inset + i * cell)
+        cr.line_to(size - inset, inset + i * cell)
+    cr.set_line_width(max(1.0, size / 18.0))
+    cr.stroke()
+
+
 def _draw_color(cr: cairo.Context, size: float) -> None:
     cr.arc(size / 2, size / 2, size * 0.31, 0, math.tau)
     cr.fill_preserve()
@@ -139,6 +159,7 @@ _DRAWERS = {
     "line": _draw_line,
     "arrow": _draw_arrow,
     "number": _draw_number,
+    "mosaic": _draw_mosaic,
     "color": _draw_color,
     "undo": _draw_undo,
     "save": _draw_confirm,

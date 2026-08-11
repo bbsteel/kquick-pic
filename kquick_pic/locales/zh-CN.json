@@ -40,6 +40,7 @@
     "selector.draw_line": "画线",
     "selector.draw_arrow": "画箭头",
     "selector.number_stamp": "数字印章",
+    "selector.mosaic": "马赛克",
     "selector.choose_color": "选择颜色",
     "selector.font_size": "字号",
     "selector.save": "保存",
