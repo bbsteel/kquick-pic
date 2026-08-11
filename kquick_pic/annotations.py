@@ -68,6 +68,7 @@ class MosaicAnnotation:
     # selector converts them to selection-relative before producing the final
     # SelectionResult.
     rect: tuple[int, int, int, int]   # (x, y, width, height)
+    mode: str = "mosaic"              # "mosaic" (pixelate) | "blur" (gaussian)
 
 
 # ---- shared Cairo rendering ----
@@ -149,16 +150,34 @@ def _draw_mosaic_annotation(cr, annotation, origin_x, origin_y) -> None:
     x, y, w, h = annotation.rect
     if w < 2 or h < 2:
         return
-    block = max(4, min(16, min(w, h) // 8))
-    small_w = max(1, w // block)
-    small_h = max(1, h // block)
-
     target = cr.get_target()
     # Copy the region out before overwriting it below.
     region = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
     rcr = cairo.Context(region)
     rcr.set_source_surface(target, -origin_x - x, -origin_y - y)
     rcr.paint()
+
+    if annotation.mode == "blur":
+        # PIL gaussian on the sampled region; cairo has no blur filter.
+        from PIL import Image, ImageFilter
+        radius = max(4, min(16, min(w, h) // 6))
+        img = Image.frombuffer(
+            "RGBA", (w, h), region.get_data(), "raw", "BGRA", w * 4, 1
+        )
+        blurred = img.filter(ImageFilter.GaussianBlur(radius))
+        buf = bytearray(blurred.tobytes("raw", "BGRA"))
+        source = cairo.ImageSurface.create_for_data(buf, cairo.FORMAT_ARGB32, w, h, w * 4)
+        cr.save()
+        cr.rectangle(origin_x + x, origin_y + y, w, h)
+        cr.clip()
+        cr.set_source_surface(source, origin_x + x, origin_y + y)
+        cr.paint()
+        cr.restore()
+        return
+
+    block = max(4, min(16, min(w, h) // 8))
+    small_w = max(1, w // block)
+    small_h = max(1, h // block)
 
     small = cairo.ImageSurface(cairo.FORMAT_ARGB32, small_w, small_h)
     scr = cairo.Context(small)

@@ -92,11 +92,13 @@ def _make_selector(rect=(100, 100, 200, 150)):
     ]
     selector._toolbar_frame = FakeWidget()
     selector._color_palette_frame = FakeWidget()
+    selector._mosaic_palette_frame = FakeWidget()
     selector._text_editor = FakeWidget()
     selector._box_button = FakeButton()
     selector._line_button = FakeButton()
     selector._arrow_button = FakeButton()
     selector._number_button = FakeButton()
+    selector._mosaic_button = FakeButton()
     selector._text_button = FakeButton()
     selector._next_number_stamp_value = 3
     selector._motion_pending = False

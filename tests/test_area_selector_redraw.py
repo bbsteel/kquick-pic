@@ -69,6 +69,7 @@ def test_selection_drag_repositions_toolbar_during_motion_flush():
     selector._background_pixbuf = FakePixbuf()
     selector._toolbar_frame = FakeToolbarFrame()
     selector._color_palette_frame = None
+    selector._mosaic_palette_frame = None
     selector._container = FakeContainer()
     selector._dragging = True
     selector._motion_pending_event = (120, 130)
@@ -91,6 +92,7 @@ def test_position_toolbar_places_below_selection_when_space_allows():
     selector._background_pixbuf = FakePixbuf()  # 500x400
     selector._toolbar_frame = FakeToolbarFrame()  # 120x52
     selector._color_palette_frame = None
+    selector._mosaic_palette_frame = None
     selector._container = FakeContainer()
 
     selector._position_toolbar()
@@ -106,6 +108,7 @@ def test_position_toolbar_flips_above_when_selection_near_bottom():
     selector._background_pixbuf = FakePixbuf()  # 500x400
     selector._toolbar_frame = FakeToolbarFrame()  # 120x52
     selector._color_palette_frame = None
+    selector._mosaic_palette_frame = None
     selector._container = FakeContainer()
 
     selector._position_toolbar()
@@ -120,6 +123,7 @@ def test_position_toolbar_clamps_when_selection_fills_screen():
     selector._background_pixbuf = FakePixbuf()  # 500x400
     selector._toolbar_frame = FakeToolbarFrame()  # 120x52
     selector._color_palette_frame = None
+    selector._mosaic_palette_frame = None
     selector._container = FakeContainer()
 
     selector._position_toolbar()

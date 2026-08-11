@@ -243,6 +243,10 @@ class AreaSelector:
         self._color_button_icon = None
         self._color_palette = None
         self._color_palette_frame = None
+        self._mosaic_mode = "mosaic"  # "mosaic" | "blur"; persists across runs
+        self._mosaic_palette = None
+        self._mosaic_palette_frame = None
+        self._mosaic_mode_buttons: dict[str, object] = {}
         self._pending_text_rect: tuple[int, int, int, int] | None = None
         self._selected_annotation_index: int | None = None
         self._annotation_drag_index: int | None = None
@@ -426,7 +430,10 @@ class AreaSelector:
         # up partially/fully outside the crop; the render clips them.
         fx, fy, _, _ = self._result
         final_annotations = [
-            MosaicAnnotation(rect=(a.rect[0] - fx, a.rect[1] - fy, a.rect[2], a.rect[3]))
+            MosaicAnnotation(
+                rect=(a.rect[0] - fx, a.rect[1] - fy, a.rect[2], a.rect[3]),
+                mode=a.mode,
+            )
             if isinstance(a, MosaicAnnotation)
             else a
             for a in self._annotations
@@ -664,6 +671,24 @@ class AreaSelector:
         container.put(color_palette_frame, 16, 56)
         color_palette_frame.hide()
 
+        # Secondary bar under the main toolbar while the mosaic tool is
+        # active: pick the obscuring style (pixelate vs gaussian blur).
+        mosaic_palette_frame = self._Gtk.Frame()
+        mosaic_palette_frame.set_shadow_type(self._Gtk.ShadowType.OUT)
+        mosaic_palette_frame.get_style_context().add_class("qp-palette-frame")
+        mosaic_palette = self._Gtk.Box(orientation=self._Gtk.Orientation.HORIZONTAL, spacing=2)
+        mosaic_palette.get_style_context().add_class("qp-palette")
+        for mode, label_key in (("mosaic", "selector.mosaic"), ("blur", "selector.blur")):
+            mode_button = self._Gtk.ToggleButton(label=t(label_key))
+            mode_button.set_tooltip_text(t(label_key))
+            mode_button.get_style_context().add_class("qp-text-sizebutton")
+            mode_button.connect("toggled", self._on_mosaic_mode_toggled, mode)
+            mosaic_palette.pack_start(mode_button, False, False, 0)
+            self._mosaic_mode_buttons[mode] = mode_button
+        mosaic_palette_frame.add(mosaic_palette)
+        container.put(mosaic_palette_frame, 16, 56)
+        mosaic_palette_frame.hide()
+
         text_view = self._Gtk.TextView()
         text_view.set_wrap_mode(self._Gtk.WrapMode.WORD_CHAR)
         text_view.set_can_focus(True)
@@ -727,6 +752,9 @@ class AreaSelector:
         self._undo_button = undo_button
         self._color_palette = color_palette
         self._color_palette_frame = color_palette_frame
+        self._mosaic_palette = mosaic_palette
+        self._mosaic_palette_frame = mosaic_palette_frame
+        self._sync_mosaic_mode_buttons()
         self._refresh_color_button()
         self._refresh_box_button()
         self._apply_text_font_size(self._text_font_size, update_buttons=True)
@@ -1426,9 +1454,13 @@ class AreaSelector:
                 if name != tool_name and btn is not None and btn.get_active():
                     btn.set_active(False)
             self._set_active_tool(tool_name)
+            if tool_name == "mosaic":
+                self._show_mosaic_palette()
         elif self._active_tool == tool_name:
             if tool_name == "text":
                 self._hide_text_editor()
+            if tool_name == "mosaic" and self._mosaic_palette_frame is not None:
+                self._mosaic_palette_frame.hide()
             self._set_active_tool(None)
 
     def _on_save(self, button) -> None:
@@ -1517,6 +1549,8 @@ class AreaSelector:
             self._toolbar_frame.hide()
         if self._color_palette_frame is not None:
             self._color_palette_frame.hide()
+        if self._mosaic_palette_frame is not None:
+            self._mosaic_palette_frame.hide()
         self._hide_text_editor()
         self._clear_active_tool_buttons()
         self._set_active_tool(None)
@@ -1789,7 +1823,7 @@ class AreaSelector:
         sx, sy, _, _ = self._selection_rect
         rx, ry, rw, rh = rel_rect
         self._annotations.append(
-            MosaicAnnotation(rect=(sx + rx, sy + ry, rw, rh))
+            MosaicAnnotation(rect=(sx + rx, sy + ry, rw, rh), mode=self._mosaic_mode)
         )
 
     def _add_number_stamp_at(self, x_abs: float, y_abs: float) -> bool:
@@ -2039,8 +2073,9 @@ class AreaSelector:
             # larger remaining band without going off-screen.
             y = max(margin, min(below_y, screen_height - toolbar_height - margin))
         self._container.move(self._toolbar_frame, x, y)
-        # Keep the color palette attached just under the toolbar.
+        # Keep the secondary bars attached just under the toolbar.
         self._position_color_palette(x, y + toolbar_height + 4)
+        self._position_mosaic_palette(x, y + toolbar_height + 4)
 
     def _set_active_tool(self, tool_name: str | None) -> None:
         self._active_tool = tool_name
@@ -2205,12 +2240,58 @@ class AreaSelector:
     def _cancel_text_entry(self, widget=None) -> None:
         self._finish_text_entry()
 
+    def _on_mosaic_mode_toggled(self, button, mode: str) -> None:
+        if not button.get_active():
+            # Keep exactly one mode selected.
+            if self._mosaic_mode == mode:
+                button.set_active(True)
+            return
+        self._mosaic_mode = mode
+        self._sync_mosaic_mode_buttons()
+
+    def _sync_mosaic_mode_buttons(self) -> None:
+        for mode, button in self._mosaic_mode_buttons.items():
+            handler_blocked = False
+            try:
+                button.handler_block_by_func(self._on_mosaic_mode_toggled)
+                handler_blocked = True
+            except TypeError:
+                pass
+            button.set_active(mode == self._mosaic_mode)
+            ctx = button.get_style_context()
+            if mode == self._mosaic_mode:
+                ctx.add_class("active")
+            else:
+                ctx.remove_class("active")
+            if handler_blocked:
+                button.handler_unblock_by_func(self._on_mosaic_mode_toggled)
+
+    def _show_mosaic_palette(self) -> None:
+        if self._mosaic_palette_frame is None or self._toolbar_frame is None:
+            return
+        # Both secondary bars dock under the toolbar; never stack them.
+        if self._color_palette_frame is not None:
+            self._color_palette_frame.hide()
+        _, natural = self._toolbar_frame.get_preferred_size()
+        toolbar_x = self._container.child_get_property(self._toolbar_frame, "x")
+        toolbar_y = self._container.child_get_property(self._toolbar_frame, "y")
+        self._position_mosaic_palette(toolbar_x, toolbar_y + natural.height + 4)
+        self._mosaic_palette_frame.show_all()
+
+    def _position_mosaic_palette(self, x: int, y: int) -> None:
+        if self._mosaic_palette_frame is None or self._container is None:
+            return
+        self._container.move(self._mosaic_palette_frame, x, y)
+
     def _toggle_color_palette(self, button) -> None:
         if self._color_palette_frame is None or self._toolbar_frame is None:
             return
         if self._color_palette_frame.get_visible():
             self._color_palette_frame.hide()
             return
+        # Both secondary bars dock under the toolbar; never stack them.
+        if self._mosaic_palette_frame is not None:
+            self._mosaic_palette_frame.hide()
         _, natural = self._toolbar_frame.get_preferred_size()
         toolbar_x = self._container.child_get_property(self._toolbar_frame, "x")
         toolbar_y = self._container.child_get_property(self._toolbar_frame, "y")
