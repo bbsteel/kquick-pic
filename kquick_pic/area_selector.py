@@ -25,6 +25,17 @@ from kquick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
 
 logger = logging.getLogger(__name__)
 
+
+def _sample_image_luma(image) -> tuple[int, int, int]:
+    """Return (min, mean, max) luma from a small thumbnail of `image`."""
+    from PIL import ImageStat
+
+    sample = image.convert("L").resize((64, 36))
+    stat = ImageStat.Stat(sample)
+    extrema = sample.getextrema()
+    return int(extrema[0]), int(round(stat.mean[0])), int(extrema[1])
+
+
 TOOLBAR_CSS = b"""
     .qp-toolbar-frame {
         border-radius: 8px;
@@ -382,25 +393,20 @@ class AreaSelector:
         self._hide_selection_controls()
 
         window_started_at = now()
-        win = self._window
-        # Map the window for this capture; the WM fullscreens and focuses it.
-        win.resize(pixbuf.get_width(), pixbuf.get_height())
-        win.fullscreen()
-        win.show_all()
-        # show_all() un-hides the toolbar/palette/text editor; hide them again.
-        self._hide_selection_controls()
-        self._drawing.grab_focus()
-        # XWayland may initially allocate a transient surface size while KWin
-        # is applying fullscreen. Redraw once the final allocation is ready.
-        self._GLib.idle_add(self._redraw_overlay_idle)
+        overlay_width = pixbuf.get_width()
+        overlay_height = pixbuf.get_height()
+        self._show_overlay_covering_screen(overlay_width, overlay_height)
+        screen = self._window.get_screen()
         log_duration(
             logger,
             "selector_overlay_shown",
             window_started_at,
-            width=pixbuf.get_width(),
-            height=pixbuf.get_height(),
+            width=overlay_width,
+            height=overlay_height,
+            screen=(screen.get_width(), screen.get_height()) if screen is not None else None,
             rgba=self._rgba_available,
             composited=self._composited,
+            fullscreen=False,
         )
 
         self._in_run = True
@@ -410,11 +416,11 @@ class AreaSelector:
             self._in_run = False
         log_duration(logger, "selector_gtk_main_exited", self._run_started_at)
 
-        # Unmap the window. Leaving no fullscreen window mapped between
-        # captures avoids compositor-state issues across screen-off/wake
-        # cycles (the permanently-mapped variant caused minutes-long black
-        # screens). Process pending events + flush so the overlay is really
-        # gone before the next capture reads the screen.
+        # Unmap the window. Leaving no overlay mapped between captures
+        # avoids compositor-state issues across screen-off/wake cycles
+        # (a permanently-mapped fullscreen variant caused minutes-long
+        # black screens). Process pending events + flush so the overlay
+        # is really gone before the next capture reads the screen.
         cleanup_started_at = now()
         self._hide_overlay_after_run()
         log_duration(logger, "selector_overlay_hidden", cleanup_started_at)
@@ -469,6 +475,8 @@ class AreaSelector:
         win.set_decorated(False)
         win.set_keep_above(True)
         win.set_accept_focus(True)
+        win.set_skip_taskbar_hint(True)
+        win.set_skip_pager_hint(True)
         win.add_events(self._Gdk.EventMask.BUTTON_PRESS_MASK)
 
         # Prefer an ARGB visual for GTK controls. The overlay itself always
@@ -826,6 +834,7 @@ class AreaSelector:
         img = Image.frombuffer(
             "RGBA", (width, height), bytes(data), "raw", "BGRA", stride, 1
         ).convert("RGB")
+        luma_min, luma_mean, luma_max = _sample_image_luma(img)
 
         fd, tmp = tempfile.mkstemp(suffix=".png")
         os.close(fd)
@@ -835,6 +844,10 @@ class AreaSelector:
             logger, "selector_background_captured", capture_started_at,
             path=screenshot_path, backend="kwin",
             include_cursor=self._include_cursor,
+            size=(width, height),
+            luma_min=luma_min,
+            luma_mean=luma_mean,
+            luma_max=luma_max,
         )
 
         pixbuf_started_at = now()
@@ -962,20 +975,61 @@ class AreaSelector:
             self._window.destroy()
             self._window = None
 
+    def _show_overlay_covering_screen(self, width: int, height: int) -> None:
+        """Map the overlay so it covers the X screen without going fullscreen.
+
+        A managed fullscreen XWayland window on a fractionally-scaled KWin
+        output can be unredirected or mis-sized and present as a black
+        screen even when the captured frame is valid. Observed on this
+        host: 125% scale kept working; 150% made native capture 3840x2160,
+        which matches the 4K video mode, so KWin direct-scanout of the
+        fullscreen overlay went black. A keep-above, undecorated window
+        sized to the capture stays on the composited path and still
+        receives real WM focus for text input.
+        """
+        win = self._window
+        win.resize(width, height)
+        win.move(0, 0)
+        win.show_all()
+        # show_all() un-hides the toolbar/palette/text editor; hide them again.
+        self._hide_selection_controls()
+        self._drawing.grab_focus()
+        gdk_win = win.get_window()
+        if gdk_win is not None:
+            gdk_win.move_resize(0, 0, width, height)
+            self._keep_window_composited(gdk_win)
+        # XWayland may initially allocate a transient surface size. Redraw
+        # once the final allocation is ready.
+        self._GLib.idle_add(self._redraw_overlay_idle)
+
+    def _keep_window_composited(self, gdk_win) -> None:
+        """Ask the WM not to unredirect this window for direct scanout."""
+        try:
+            gdk_win.property_change(
+                self._Gdk.atom_intern("_NET_WM_BYPASS_COMPOSITOR", False),
+                self._Gdk.atom_intern("CARDINAL", False),
+                32,
+                self._Gdk.PropMode.REPLACE,
+                [2],
+            )
+        except Exception:
+            logger.debug(
+                "Could not set _NET_WM_BYPASS_COMPOSITOR on overlay",
+                exc_info=True,
+            )
+
     def _hide_overlay_after_run(self) -> None:
         if self._window is None:
             return
 
-        self._window.unfullscreen()
         self._window.hide()
         while self._Gtk.events_pending():
             self._Gtk.main_iteration()
         self._Gdk.flush()
 
-        # KWin may still be processing the just-hidden fullscreen surface.
-        # Clearing the Gtk.Image immediately can leave that surface with empty
-        # content during the compositor transition, which appears as a black
-        # screen. The next capture's set_from_pixbuf() replaces this image.
+        # Keep the Gtk.Image contents until the next capture replaces them.
+        # Clearing immediately after hide can leave KWin with an empty
+        # surface during the unmap transition (visible as a black flash).
         self._background_pixbuf = None
 
     def _update_overlay_geometry(self) -> None:
@@ -993,7 +1047,7 @@ class AreaSelector:
             self._drawing.queue_draw()
 
     def _redraw_overlay_idle(self) -> bool:
-        """Redraw after KWin has settled the fullscreen allocation."""
+        """Redraw after KWin has settled the overlay allocation."""
         if self._drawing is not None and self._in_run:
             self._drawing.queue_draw()
         return False

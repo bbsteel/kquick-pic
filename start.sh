@@ -114,7 +114,9 @@ stop_instance() {
     kill -9 "$pid" 2>/dev/null || true
     sleep 0.1
   fi
-  rm -f -- "$PID_FILE"
+  if ! rm -f -- "$PID_FILE"; then
+    echo "警告: 无法删除 pid 文件 $PID_FILE，启动时会覆盖写入" >&2
+  fi
   echo "已停止"
 }
 

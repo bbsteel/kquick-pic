@@ -1,6 +1,8 @@
 import inspect
 
-from kquick_pic.area_selector import AreaSelector
+from PIL import Image
+
+from kquick_pic.area_selector import AreaSelector, _sample_image_luma
 
 
 class FakeDrawing:
@@ -44,6 +46,22 @@ def test_overlay_draw_never_clears_argb_surface():
 
     assert "OPERATOR_CLEAR" not in source
     assert "OPERATOR_OVER" in source
+
+
+def test_sample_image_luma_reports_bright_frame():
+    image = Image.new("RGB", (200, 100), (240, 240, 240))
+    luma_min, luma_mean, luma_max = _sample_image_luma(image)
+    assert luma_min == 240
+    assert luma_mean == 240
+    assert luma_max == 240
+
+
+def test_sample_image_luma_reports_black_frame():
+    image = Image.new("RGB", (200, 100), (0, 0, 0))
+    luma_min, luma_mean, luma_max = _sample_image_luma(image)
+    assert luma_min == 0
+    assert luma_mean == 0
+    assert luma_max == 0
 
 
 def test_selection_drag_redraw_covers_old_and_new_selection_bodies():
