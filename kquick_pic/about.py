@@ -10,6 +10,7 @@ import sys
 from typing import Callable, Mapping, Sequence
 
 from kquick_pic import __version__
+from kquick_pic.clipboard import ClipboardManager
 from kquick_pic.i18n import t
 
 
@@ -149,6 +150,20 @@ def collect_system_info(
     )
 
 
+ABOUT_FIELD_LABEL_KEYS = {
+    "Version": "about.version",
+    "Commit": "about.commit",
+    "Build Number": "about.build_number",
+    "Build Time": "about.build_time",
+    "Platform": "about.platform",
+    "Python": "about.python",
+    "GTK": "about.gtk",
+    "Session": "about.session_type",
+    "GDK Backend": "about.gdk_backend",
+    "Display": "about.display",
+}
+
+
 def format_about_lines(
     build: BuildInfo,
     system: SystemInfo,
@@ -167,6 +182,25 @@ def format_about_lines(
     ]
 
 
+def localized_about_labels() -> dict[str, str]:
+    return {field: t(key) for field, key in ABOUT_FIELD_LABEL_KEYS.items()}
+
+
+def format_about_text(
+    build: BuildInfo,
+    system: SystemInfo,
+    *,
+    labels: Mapping[str, str] | None = None,
+    title: str = "KQuick Pic",
+) -> str:
+    """Plain-text block for one-click copy of About details."""
+    field_labels = labels or {}
+    lines = [title]
+    for field, value in format_about_lines(build, system):
+        lines.append(f"{field_labels.get(field, field)}: {value}")
+    return "\n".join(lines) + "\n"
+
+
 class AboutDialog:
     def __init__(
         self,
@@ -180,6 +214,8 @@ class AboutDialog:
         self._Gtk = Gtk
         self._build = build or collect_build_info()
         self._system = system or collect_system_info()
+        self._labels = localized_about_labels()
+        self._copy_reset_id = 0
         self._dialog = Gtk.Dialog(
             title=t("about.title"),
             transient_for=None,
@@ -187,6 +223,11 @@ class AboutDialog:
         )
         self._dialog.set_default_size(560, -1)
         self._dialog.set_border_width(12)
+        self._copy_button = self._dialog.add_button(
+            t("about.copy"),
+            Gtk.ResponseType.APPLY,
+        )
+        self._copy_button.set_tooltip_text(t("about.copy_tooltip"))
         self._dialog.add_button(t("about.close"), Gtk.ResponseType.CLOSE)
 
         content = self._dialog.get_content_area()
@@ -202,20 +243,8 @@ class AboutDialog:
         grid.set_row_spacing(6)
         content.add(grid)
 
-        labels = {
-            "Version": t("about.version"),
-            "Commit": t("about.commit"),
-            "Build Number": t("about.build_number"),
-            "Build Time": t("about.build_time"),
-            "Platform": t("about.platform"),
-            "Python": t("about.python"),
-            "GTK": t("about.gtk"),
-            "Session": t("about.session_type"),
-            "GDK Backend": t("about.gdk_backend"),
-            "Display": t("about.display"),
-        }
-        for row, (label, value) in enumerate(format_about_lines(self._build, self._system)):
-            key_label = Gtk.Label(label=labels.get(label, label))
+        for row, (field, value) in enumerate(format_about_lines(self._build, self._system)):
+            key_label = Gtk.Label(label=self._labels.get(field, field))
             key_label.set_xalign(0)
             value_label = Gtk.Label(label=value)
             value_label.set_xalign(0)
@@ -226,9 +255,34 @@ class AboutDialog:
 
         content.show_all()
 
+    def _copy_about_text(self) -> None:
+        ClipboardManager.set_text(
+            format_about_text(
+                self._build,
+                self._system,
+                labels=self._labels,
+            )
+        )
+        self._copy_button.set_label(t("about.copied"))
+        from gi.repository import GLib
+        if self._copy_reset_id:
+            GLib.source_remove(self._copy_reset_id)
+        self._copy_reset_id = GLib.timeout_add(1500, self._restore_copy_label)
+
+    def _restore_copy_label(self) -> bool:
+        self._copy_reset_id = 0
+        if self._copy_button.get_realized():
+            self._copy_button.set_label(t("about.copy"))
+        return False
+
     def run(self) -> None:
         self._dialog.show()
-        self._dialog.run()
+        while self._dialog.run() == self._Gtk.ResponseType.APPLY:
+            self._copy_about_text()
 
     def destroy(self) -> None:
+        if self._copy_reset_id:
+            from gi.repository import GLib
+            GLib.source_remove(self._copy_reset_id)
+            self._copy_reset_id = 0
         self._dialog.destroy()

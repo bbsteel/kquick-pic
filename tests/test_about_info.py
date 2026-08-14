@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from kquick_pic.about import collect_build_info, collect_system_info, format_about_lines
+from kquick_pic.about import (
+    ABOUT_FIELD_LABEL_KEYS,
+    collect_build_info,
+    collect_system_info,
+    format_about_lines,
+    format_about_text,
+)
 
 
 def test_collect_build_info_reads_generated_metadata(tmp_path):
@@ -95,3 +101,59 @@ def test_format_about_lines_contains_app_and_system_sections():
     assert ("Build Number", "unknown") in lines
     assert ("Build Time", "development") in lines
     assert ("Platform", "Linux-test") in lines
+
+
+def test_format_about_text_is_copyable_plain_text():
+    build = collect_build_info(
+        metadata_path=Path("missing.json"),
+        git_runner=lambda _args: None,
+    )
+    system = collect_system_info(
+        env={},
+        platform_provider=lambda: "Linux-test",
+        python_provider=lambda: "Python 3.13.5",
+        gtk_provider=lambda: "GTK unknown",
+    )
+
+    text = format_about_text(build, system)
+
+    assert text.startswith("KQuick Pic\n")
+    assert "Version: 0.1.0\n" in text
+    assert "Commit: unknown\n" in text
+    assert "Platform: Linux-test\n" in text
+    assert text.endswith("\n")
+
+
+def test_format_about_text_uses_localized_labels():
+    build = collect_build_info(
+        metadata_path=Path("missing.json"),
+        git_runner=lambda _args: None,
+    )
+    system = collect_system_info(
+        env={},
+        platform_provider=lambda: "Linux-test",
+        python_provider=lambda: "Python 3.13.5",
+        gtk_provider=lambda: "GTK unknown",
+    )
+
+    text = format_about_text(build, system, labels={"Version": "版本", "Commit": "提交"})
+
+    assert "版本: 0.1.0\n" in text
+    assert "提交: unknown\n" in text
+    assert "Platform: Linux-test\n" in text
+
+
+def test_about_label_keys_cover_every_formatted_field():
+    build = collect_build_info(
+        metadata_path=Path("missing.json"),
+        git_runner=lambda _args: None,
+    )
+    system = collect_system_info(
+        env={},
+        platform_provider=lambda: "Linux-test",
+        python_provider=lambda: "Python 3.13.5",
+        gtk_provider=lambda: "GTK unknown",
+    )
+
+    fields = [field for field, _value in format_about_lines(build, system)]
+    assert fields == list(ABOUT_FIELD_LABEL_KEYS)
