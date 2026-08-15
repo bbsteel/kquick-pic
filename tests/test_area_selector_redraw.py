@@ -2,7 +2,7 @@ import inspect
 
 from PIL import Image
 
-from kquick_pic.area_selector import AreaSelector, _sample_image_luma
+from kuick_pic.area_selector import AreaSelector, _sample_image_luma
 
 
 class FakeDrawing:

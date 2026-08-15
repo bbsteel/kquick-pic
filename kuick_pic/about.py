@@ -9,9 +9,9 @@ import subprocess
 import sys
 from typing import Callable, Mapping, Sequence
 
-from kquick_pic import __version__
-from kquick_pic.clipboard import ClipboardManager
-from kquick_pic.i18n import t
+from kuick_pic import __version__
+from kuick_pic.clipboard import ClipboardManager
+from kuick_pic.i18n import t
 
 
 GitRunner = Callable[[Sequence[str]], str | None]
@@ -37,7 +37,7 @@ class SystemInfo:
 
 def _default_metadata_path() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS) / "kquick_pic" / "build-info.json"
+        return Path(sys._MEIPASS) / "kuick_pic" / "build-info.json"
     return Path(__file__).resolve().parent / "build-info.json"
 
 
@@ -191,7 +191,7 @@ def format_about_text(
     system: SystemInfo,
     *,
     labels: Mapping[str, str] | None = None,
-    title: str = "KQuick Pic",
+    title: str = "Kuick Pic",
 ) -> str:
     """Plain-text block for one-click copy of About details."""
     field_labels = labels or {}
@@ -234,7 +234,7 @@ class AboutDialog:
         content.set_spacing(10)
 
         title = Gtk.Label()
-        title.set_markup("<b>KQuick Pic</b>")
+        title.set_markup("<b>Kuick Pic</b>")
         title.set_xalign(0)
         content.add(title)
 

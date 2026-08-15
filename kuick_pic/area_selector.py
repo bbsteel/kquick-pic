@@ -4,9 +4,9 @@ from pathlib import Path
 
 import cairo
 
-from kquick_pic.timing import log_debug_duration, log_debug_event, log_duration, log_event, now
-from kquick_pic.i18n import t
-from kquick_pic.annotations import (
+from kuick_pic.timing import log_debug_duration, log_debug_event, log_duration, log_event, now
+from kuick_pic.i18n import t
+from kuick_pic.annotations import (
     SelectionResult,
     RectangleAnnotation,
     TextAnnotation,
@@ -21,7 +21,7 @@ from kquick_pic.annotations import (
     text_font_description,
     _DEFAULT_TEXT_FONT_SIZE,
 )
-from kquick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
+from kuick_pic.toolbar_icons import TOOLBAR_ICON_SIZE, draw_toolbar_icon
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +312,7 @@ class AreaSelector:
             except Exception:
                 logger.warning(
                     "KWin ScreenShot2 capture failed, falling back to XDG portal "
-                    "(expect launch-feedback bounce; check that kquick-pic.desktop "
+                    "(expect launch-feedback bounce; check that kuick-pic.desktop "
                     "declares X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2)",
                     exc_info=True,
                 )
@@ -1140,7 +1140,7 @@ class AreaSelector:
             preview_rect = self._relative_rect_within_selection(self._current_drag_rect())
             if preview_rect is not None:
                 sx, sy, _, _ = self._selection_rect
-                from kquick_pic.annotations import _draw_rectangle_annotation as _dra
+                from kuick_pic.annotations import _draw_rectangle_annotation as _dra
                 _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=False)
         elif self._dragging and self._gesture_kind == "mosaic":
             # Gray wash + dashed outline while dragging; the live mosaic
@@ -1162,21 +1162,21 @@ class AreaSelector:
                 cr.restore()
         elif self._pending_text_rect is not None:
             sx, sy, _, _ = self._selection_rect
-            from kquick_pic.annotations import _draw_rectangle_annotation as _dra
+            from kuick_pic.annotations import _draw_rectangle_annotation as _dra
             _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_color()), sx, sy, dashed=False)
 
         if self._dragging and self._gesture_kind == "line" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
             start_rel = (int(self._start_x - sx), int(self._start_y - sy))
             end_rel = (int(self._end_x - sx), int(self._end_y - sy))
-            from kquick_pic.annotations import draw_line_preview
+            from kuick_pic.annotations import draw_line_preview
             draw_line_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
         if self._dragging and self._gesture_kind == "arrow" and self._selection_rect is not None:
             sx, sy, _, _ = self._selection_rect
             start_rel = (int(self._start_x - sx), int(self._start_y - sy))
             end_rel = (int(self._end_x - sx), int(self._end_y - sy))
-            from kquick_pic.annotations import draw_arrow_preview
+            from kuick_pic.annotations import draw_arrow_preview
             draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=False)
 
         log_debug_duration(
@@ -1827,7 +1827,7 @@ class AreaSelector:
         start_abs: tuple[float, float],
         end_abs: tuple[float, float],
     ) -> "LineAnnotation | None":
-        from kquick_pic.annotations import LineAnnotation
+        from kuick_pic.annotations import LineAnnotation
         if self._selection_rect is None:
             return None
         sx, sy, sw, sh = self._selection_rect
@@ -1848,7 +1848,7 @@ class AreaSelector:
         start_abs: tuple[float, float],
         end_abs: tuple[float, float],
     ) -> "ArrowAnnotation | None":
-        from kquick_pic.annotations import ArrowAnnotation
+        from kuick_pic.annotations import ArrowAnnotation
         if self._selection_rect is None:
             return None
         sx, sy, sw, sh = self._selection_rect
@@ -1901,7 +1901,7 @@ class AreaSelector:
         if self._selection_rect is None:
             return
         sx, sy, _, _ = self._selection_rect
-        from kquick_pic.annotations import render_annotations
+        from kuick_pic.annotations import render_annotations
         # Mosaics are screen-anchored (origin 0,0); everything else is
         # selection-relative and moves with the selection.
         render_annotations(

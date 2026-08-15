@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from kquick_pic.config import (
+from kuick_pic.config import (
     AppConfig,
     ConfigManager,
     HISTORY_COUNT_DEFAULT,
@@ -16,7 +16,7 @@ from kquick_pic.config import (
 class TestAppConfig:
     def test_defaults(self):
         cfg = AppConfig()
-        assert cfg.save_path == "~/Pictures/kquick-pic"
+        assert cfg.save_path == "~/Pictures/kuick-pic"
         assert cfg.format == "png"
         assert cfg.hotkey == "<ctrl>+<shift>+p"
         assert cfg.icon_theme == "v1"
@@ -57,7 +57,7 @@ class TestConfigManager:
             mgr = ConfigManager(config_path=path)
             cfg = mgr.load()
             assert cfg.format == "png"
-            assert cfg.save_path == "~/Pictures/kquick-pic"
+            assert cfg.save_path == "~/Pictures/kuick-pic"
             assert path.exists()  # saved defaults back
 
     def test_load_valid_config(self):
@@ -166,7 +166,7 @@ class TestConfigManager:
             mgr = ConfigManager(config_path=path)
             cfg = mgr.load()
             assert cfg.format == "jpg"
-            assert cfg.save_path == "~/Pictures/kquick-pic"
+            assert cfg.save_path == "~/Pictures/kuick-pic"
             assert cfg.hotkey == "<ctrl>+<shift>+p"
             assert cfg.include_cursor is True
             assert cfg.history_hotkey == "<ctrl>+<shift>+h"
@@ -181,9 +181,9 @@ class TestConfigManager:
             assert cfg.history_count == HISTORY_COUNT_DEFAULT
 
     def test_migrates_legacy_quick_pic_config(self, tmp_path, monkeypatch):
-        import kquick_pic.config as config_mod
+        import kuick_pic.config as config_mod
 
-        legacy_dir = tmp_path / "quick-pic"
+        legacy_dir = tmp_path / "kquick-pic"
         legacy_dir.mkdir()
         legacy_cfg = legacy_dir / "config.json"
         legacy_cfg.write_text(
@@ -198,10 +198,9 @@ class TestConfigManager:
                 }
             )
         )
-        new_path = tmp_path / "kquick-pic" / "config.json"
+        new_path = tmp_path / "kuick-pic" / "config.json"
         monkeypatch.setattr(config_mod, "DEFAULT_CONFIG_PATH", new_path)
-        monkeypatch.setattr(config_mod, "LEGACY_CONFIG_PATH", legacy_cfg)
-        monkeypatch.setattr(config_mod, "LEGACY_CONFIG_DIR", legacy_dir)
+        monkeypatch.setattr(config_mod, "LEGACY_CONFIG_DIRS", (legacy_dir,))
 
         mgr = ConfigManager(config_path=new_path)
         cfg = mgr.load()
@@ -209,3 +208,27 @@ class TestConfigManager:
         assert cfg.save_path == "/tmp/legacy-shots"
         assert cfg.format == "jpg"
         assert cfg.history_count == 4
+
+    def test_migrates_older_quick_pic_config(self, tmp_path, monkeypatch):
+        import kuick_pic.config as config_mod
+
+        legacy_dir = tmp_path / "quick-pic"
+        legacy_dir.mkdir()
+        (legacy_dir / "config.json").write_text(
+            json.dumps(
+                {
+                    "save_path": "/tmp/older-shots",
+                    "format": "png",
+                    "hotkey": "<ctrl>+a",
+                    "history_hotkey": "<ctrl>+b",
+                    "language": "en",
+                }
+            )
+        )
+        new_path = tmp_path / "kuick-pic" / "config.json"
+        monkeypatch.setattr(config_mod, "DEFAULT_CONFIG_PATH", new_path)
+        monkeypatch.setattr(config_mod, "LEGACY_CONFIG_DIRS", (tmp_path / "kquick-pic", legacy_dir))
+
+        mgr = ConfigManager(config_path=new_path)
+        cfg = mgr.load()
+        assert cfg.save_path == "/tmp/older-shots"

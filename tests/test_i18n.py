@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from kquick_pic.i18n import (
+from kuick_pic.i18n import (
     I18nManager,
     LanguagePlugin,
     set_language,
@@ -88,7 +88,7 @@ class TestI18nManager:
             # Create a manager with user dir
             mgr = I18nManager()
             # Replace the user locale dir with our temp dir
-            from kquick_pic import i18n as i18n_mod
+            from kuick_pic import i18n as i18n_mod
             old_dir = i18n_mod.USER_LOCALE_DIR
             i18n_mod.USER_LOCALE_DIR = user_dir
             try:

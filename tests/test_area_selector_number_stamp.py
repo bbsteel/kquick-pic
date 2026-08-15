@@ -1,5 +1,5 @@
-from kquick_pic.area_selector import AreaSelector
-from kquick_pic.annotations import NumberStampAnnotation
+from kuick_pic.area_selector import AreaSelector
+from kuick_pic.annotations import NumberStampAnnotation
 
 
 class FakeDrawing:

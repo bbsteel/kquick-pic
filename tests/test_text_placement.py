@@ -1,4 +1,4 @@
-from kquick_pic.annotations import (
+from kuick_pic.annotations import (
     TextAnnotation,
     RectangleAnnotation,
     click_text_placement_rect,

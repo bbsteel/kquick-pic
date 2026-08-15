@@ -1,5 +1,5 @@
 [project]
-name = "kquick-pic"
+name = "kuick-pic"
 version = "0.1.0"
 description = "KDE/Plasma-oriented quick screenshot tool (tray, hotkey, pin)"
 requires-python = ">=3.10"
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-kquick-pic = "kquick_pic.__main__:main"
+kuick-pic = "kuick_pic.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -18,10 +18,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-    "kquick_pic",
+    "kuick_pic",
     "CLAUDE.md",
     "scripts/*.sh",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["kuick_pic"]
 
 [dependency-groups]
 dev = [

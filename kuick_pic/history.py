@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# New prefix after rename; keep legacy quick-pic-* so old files still appear.
+# Current prefix first; keep previous names so old files still appear.
 _SCREENSHOT_GLOBS = (
+    "kuick-pic-*.png",
+    "kuick-pic-*.jpg",
+    "kuick-pic-*.jpeg",
     "kquick-pic-*.png",
     "kquick-pic-*.jpg",
     "kquick-pic-*.jpeg",

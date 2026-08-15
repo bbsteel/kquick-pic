@@ -3,21 +3,21 @@
 import os
 
 datas = [
-    ('kquick_pic/icons', 'kquick_pic/icons'),
-    ('kquick_pic/locales', 'kquick_pic/locales'),
+    ('kuick_pic/icons', 'kuick_pic/icons'),
+    ('kuick_pic/locales', 'kuick_pic/locales'),
 ]
 
-build_info_file = os.environ.get('KQUICK_PIC_BUILD_INFO_FILE')
+build_info_file = os.environ.get('KUICK_PIC_BUILD_INFO_FILE')
 if build_info_file:
-    datas.append((build_info_file, 'kquick_pic'))
+    datas.append((build_info_file, 'kuick_pic'))
 
 a = Analysis(
-    ['kquick_pic/__main__.py'],
+    ['kuick_pic/__main__.py'],
     pathex=[],
     binaries=[],
     datas=datas,
     hiddenimports=[
-        'kquick_pic.about',
+        'kuick_pic.about',
         'mss', 'mss.tools', 'mss.linux',
         'pynput', 'pynput.keyboard', 'pynput.keyboard._xorg',
         'pynput._util', 'pynput._util.xorg',
@@ -47,7 +47,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='kquick-pic',
+    name='kuick-pic',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -63,5 +63,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='kquick-pic',
+    name='kuick-pic',
 )

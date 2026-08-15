@@ -1,12 +1,12 @@
-# KQuick Pic (`kquick-pic`)
+# Kuick Pic (`kuick-pic`)
 
 KDE/Plasma 向的个人快速截图工具：托盘常驻 + 全局热键 + 区域选择 + 保存/钉住 + 路径入剪贴板。  
-非官方 KDE 项目。Python 包：`kquick_pic`。
+非官方 KDE 项目。Python 包：`kuick_pic`。
 
 ## 运行
 
 ```bash
-uv run python -m kquick_pic
+uv run python -m kuick_pic
 ```
 
 venv 必须用系统 Python 3.13 创建（`--system-site-packages`），因为 GTK3 / PyGObject / dbus-python 是系统包，无法通过 pip 安装：
@@ -28,8 +28,8 @@ uv sync
 
 1. 用系统 Python 3.13 创建 `.venv`
 2. 执行 `uv sync --frozen`
-3. 安装 `~/.local/share/applications/kquick-pic.desktop`
-4. 安装桌面图标 `~/.local/share/icons/hicolor/256x256/apps/kquick-pic.png`
+3. 安装 `~/.local/share/applications/kuick-pic.desktop`
+4. 安装桌面图标 `~/.local/share/icons/hicolor/256x256/apps/kuick-pic.png`
 
 卸载桌面集成：
 
@@ -46,7 +46,7 @@ uv sync
 输出：
 
 ```bash
-dist/kquick-pic-0.1.0.tar.gz
+dist/kuick-pic-0.1.0.tar.gz
 ```
 
 把这个 tar.gz 发给另一个 Linux 用户后，对方解压并执行：
@@ -58,8 +58,8 @@ dist/kquick-pic-0.1.0.tar.gz
 ### 额外说明
 
 - 分发目标仍然需要系统层依赖：`python3.13`、GTK3 / PyGObject、`dbus-python`
-- 自启动由应用内设置控制，写入 `~/.config/autostart/kquick-pic.desktop`
-- 多语言插件可放在 `kquick_pic/locales/*.json` 或 `~/.config/kquick-pic/locales/*.json`
+- 自启动由应用内设置控制，写入 `~/.config/autostart/kuick-pic.desktop`
+- 多语言插件可放在 `kuick_pic/locales/*.json` 或 `~/.config/kuick-pic/locales/*.json`
 
 ## 技术栈
 
@@ -70,7 +70,7 @@ dist/kquick-pic-0.1.0.tar.gz
 | 剪贴板 | `Gtk.Clipboard` (写入路径文本，非图像) |
 | 托盘 | 原生 D-Bus `org.kde.StatusNotifierItem` (非 pystray/AyatanaAppIndicator3) |
 | 热键 | `pynput` (XRecord) |
-| 配置 | JSON (`~/.config/kquick-pic/config.json`) |
+| 配置 | JSON (`~/.config/kuick-pic/config.json`) |
 
 ## 线程模型
 
@@ -92,8 +92,8 @@ dist/kquick-pic-0.1.0.tar.gz
 ## 项目结构
 
 ```
-kquick_pic/
-├── app.py              # KQuickPicApp 生命周期编排
+kuick_pic/
+├── app.py              # KuickPicApp 生命周期编排
 ├── config.py           # AppConfig dataclass + ConfigManager (JSON)
 ├── screenshot.py       # ScreenshotCapture: capture_fullscreen / capture_area
 ├── area_selector.py    # GTK3 全屏叠加层：拖拽选区 (Overlay: Image + DrawingArea)
@@ -147,10 +147,10 @@ pystray 默认用 `Gtk.StatusIcon` (XEmbed 协议)，KDE Plasma 5+ 已弃用。�
 
 ## 配置
 
-`~/.config/kquick-pic/config.json`：
+`~/.config/kuick-pic/config.json`：
 ```json
 {
-  "save_path": "~/Pictures/kquick-pic",
+  "save_path": "~/Pictures/kuick-pic",
   "format": "png",
   "hotkey": "<ctrl>+<shift>+p",
   "icon_theme": "v1",

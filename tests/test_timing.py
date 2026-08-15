@@ -1,6 +1,6 @@
 import logging
 
-from kquick_pic.timing import elapsed_ms, log_debug_duration, log_debug_event, log_duration, log_event
+from kuick_pic.timing import elapsed_ms, log_debug_duration, log_debug_event, log_duration, log_event
 
 
 class FakeClock:
@@ -18,7 +18,7 @@ def test_elapsed_ms_uses_integer_milliseconds():
 
 
 def test_log_event_formats_stable_key_value_pairs(caplog):
-    logger = logging.getLogger("kquick_pic.test_timing")
+    logger = logging.getLogger("kuick_pic.test_timing")
 
     with caplog.at_level(logging.INFO):
         log_event(logger, "screenshot_triggered", source="tray", count=2)
@@ -27,7 +27,7 @@ def test_log_event_formats_stable_key_value_pairs(caplog):
 
 
 def test_log_duration_includes_elapsed_ms(caplog):
-    logger = logging.getLogger("kquick_pic.test_timing")
+    logger = logging.getLogger("kuick_pic.test_timing")
     clock = FakeClock(4.125)
 
     with caplog.at_level(logging.INFO):
@@ -37,7 +37,7 @@ def test_log_duration_includes_elapsed_ms(caplog):
 
 
 def test_log_debug_event_uses_debug_level(caplog):
-    logger = logging.getLogger("kquick_pic.test_timing")
+    logger = logging.getLogger("kuick_pic.test_timing")
 
     with caplog.at_level(logging.DEBUG):
         log_debug_event(logger, "motion_flush", gesture="select")
@@ -47,7 +47,7 @@ def test_log_debug_event_uses_debug_level(caplog):
 
 
 def test_log_debug_duration_uses_debug_level(caplog):
-    logger = logging.getLogger("kquick_pic.test_timing")
+    logger = logging.getLogger("kuick_pic.test_timing")
     clock = FakeClock(8.125)
 
     with caplog.at_level(logging.DEBUG):

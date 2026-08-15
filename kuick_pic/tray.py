@@ -2,7 +2,7 @@ import os
 import logging
 from dataclasses import dataclass
 
-from kquick_pic.i18n import t
+from kuick_pic.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class TrayManager:
         gi.require_version("Gtk", "3.0")
         from gi.repository import Gtk
 
-        from kquick_pic.icon import build_icon_pixmaps, ICON_DIR
+        from kuick_pic.icon import build_icon_pixmaps, ICON_DIR
 
         theme = self._config.icon_theme
 
@@ -195,7 +195,7 @@ class TrayManager:
         self._degraded = bool(degraded)
         logger.info("Tray capture degraded=%s", self._degraded)
         if self._sni is not None:
-            from kquick_pic.icon import build_icon_pixmaps
+            from kuick_pic.icon import build_icon_pixmaps
 
             self._sni._update_icon(
                 "",
@@ -228,7 +228,7 @@ class TrayManager:
             import gi
             gi.require_version("Notify", "0.7")
             from gi.repository import Notify
-            Notify.init("kquick-pic")
+            Notify.init("kuick-pic")
             n = Notify.Notification.new(title, message, "dialog-information")
             n.show()
         except Exception:
@@ -282,7 +282,7 @@ class TrayManager:
         self._on_quit(None)
 
     def _replace_sni(self, theme: str) -> None:
-        from kquick_pic.icon import build_icon_pixmaps
+        from kuick_pic.icon import build_icon_pixmaps
 
         if self._sni is not None:
             self._sni.remove_from_connection()
@@ -424,7 +424,7 @@ def _create_sni(
                 (
                     self._icon_name,
                     self._icon_pixmaps,
-                    dbus.String("KQuick Pic"),
+                    dbus.String("Kuick Pic"),
                     dbus.String(self._tooltip_body),
                 ),
                 signature=None,
@@ -532,10 +532,10 @@ def _create_sni(
             if interface_name != "org.kde.StatusNotifierItem":
                 return {}
             return {
-                "Id": dbus.String("kquick-pic"),
+                "Id": dbus.String("kuick-pic"),
                 "Category": dbus.String("ApplicationStatus"),
                 "Status": dbus.String("Active"),
-                "Title": dbus.String("KQuick Pic"),
+                "Title": dbus.String("Kuick Pic"),
                 "IconName": self._icon_name,
                 "IconThemePath": self._icon_theme_path,
                 "IconPixmap": self._icon_pixmaps,

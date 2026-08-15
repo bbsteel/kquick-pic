@@ -1,11 +1,11 @@
-# KQuick Pic (`kquick-pic`)
+# Kuick Pic (`kuick-pic`)
 
 **Unofficial, personal, KDE/Plasma-oriented** quick screenshot tool for Linux.
 
 Not an official KDE project. Not a cross-platform app. Not a “works on every Linux DE” package.  
 It exists to be **lighter and faster for daily tray use** on a KDE-ish desktop than stock screenshot tools.
 
-中文名可用：**KQuick Pic**。Python 包名：`kquick_pic`。CLI / desktop id：`kquick-pic`。
+中文名可用：**Kuick Pic**。Python 包名：`kuick_pic`。CLI / desktop id：`kuick-pic`。
 
 ---
 
@@ -111,8 +111,8 @@ This:
 
 1. Creates `.venv` with system site-packages  
 2. `uv sync --frozen`  
-3. Installs `~/.local/share/applications/kquick-pic.desktop`  
-4. Installs icon `…/icons/hicolor/256x256/apps/kquick-pic.png`  
+3. Installs `~/.local/share/applications/kuick-pic.desktop`  
+4. Installs icon `…/icons/hicolor/256x256/apps/kuick-pic.png`  
 5. Registers KWin restricted interface for ScreenShot2 (important on Plasma)
 
 ### Dev run
@@ -120,7 +120,7 @@ This:
 ```bash
 uv venv --system-site-packages --python python3.13
 uv sync
-uv run python -m kquick_pic
+uv run python -m kuick_pic
 # or
 ./start.sh start
 ./start.sh restart
@@ -129,9 +129,9 @@ uv run python -m kquick_pic
 CLI entry after install:
 
 ```bash
-kquick-pic
+kuick-pic
 # or
-python -m kquick_pic
+python -m kuick_pic
 ```
 
 ### Uninstall desktop integration
@@ -149,14 +149,14 @@ python -m kquick_pic
 ```bash
 ./scripts/build-binary.sh
 ./scripts/package-binary.sh
-# → dist/kquick-pic-0.1.0-linux-x86_64.tar.gz
+# → dist/kuick-pic-0.1.0-linux-x86_64.tar.gz
 ```
 
 Source tarball:
 
 ```bash
 ./scripts/package-release.sh
-# → dist/kquick-pic-0.1.0.tar.gz
+# → dist/kuick-pic-0.1.0.tar.gz
 ```
 
 Recipients still need system GTK3 / PyGObject / dbus and a suitable desktop session.
@@ -166,14 +166,14 @@ Recipients still need system GTK3 / PyGObject / dbus and a suitable desktop sess
 ## Configuration
 
 ```text
-~/.config/kquick-pic/config.json
+~/.config/kuick-pic/config.json
 ```
 
 Example:
 
 ```json
 {
-  "save_path": "~/Pictures/kquick-pic",
+  "save_path": "~/Pictures/kuick-pic",
   "format": "png",
   "hotkey": "<ctrl>+<shift>+p",
   "icon_theme": "v1",
@@ -185,21 +185,21 @@ Example:
 }
 ```
 
-- **Autostart** desktop: `~/.config/autostart/kquick-pic.desktop`  
-- **User locales**: `~/.config/kquick-pic/locales/*.json`  
-- **Builtin locales**: `kquick_pic/locales/`  
-- **Screenshot files**: `kquick-pic-YYYY-…png` (history still lists legacy `quick-pic-*` files)
+- **Autostart** desktop: `~/.config/autostart/kuick-pic.desktop`  
+- **User locales**: `~/.config/kuick-pic/locales/*.json`  
+- **Builtin locales**: `kuick_pic/locales/`  
+- **Screenshot files**: `kuick-pic-YYYY-…png` (history still lists `kquick-pic-*` and `quick-pic-*`)
 
-### Migration from Quick Pic
+### Migration from KQuick Pic / Quick Pic
 
-On first start, if `~/.config/kquick-pic/config.json` is missing and `~/.config/quick-pic/config.json` exists, the config (and optional `locales/`) is **copied** to the new path.  
-Your existing pictures under `~/Pictures/quick-pic` are left alone; change `save_path` in settings if you want the new default folder.
+On first start, if `~/.config/kuick-pic/config.json` is missing, the newest of `~/.config/kquick-pic/config.json` or `~/.config/quick-pic/config.json` (and optional `locales/`) is **copied** to the new path.  
+Your existing pictures stay where they are; change `save_path` in settings if you want the new default folder.
 
 ---
 
 ## Plasma notes
 
-- Desktop `Exec` must be **`.venv/bin/python3 -m kquick_pic`** (not the console-script shim) so KWin can match `/proc/self/exe` for ScreenShot2 authorization.  
+- Desktop `Exec` must be **`.venv/bin/python3 -m kuick_pic`** (not the console-script shim) so KWin can match `/proc/self/exe` for ScreenShot2 authorization.  
 - Desktop must include:
 
   ```text
@@ -213,11 +213,11 @@ Your existing pictures under `~/Pictures/quick-pic` are left alone; change `save
 ## Project layout
 
 ```text
-kquick_pic/          # application package
+kuick_pic/          # application package
 scripts/             # install, build, package
 start.sh             # build / install / start / stop / restart
 tests/
-kquick-pic.spec      # PyInstaller
+kuick-pic.spec      # PyInstaller
 ```
 
 ---

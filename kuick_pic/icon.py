@@ -3,12 +3,12 @@ import sys
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-from kquick_pic.i18n import t
+from kuick_pic.i18n import t
 
-ICON_NAME = "kquick-pic-tray"
+ICON_NAME = "kuick-pic-tray"
 
 if getattr(sys, 'frozen', False):
-    ICON_DIR = Path(sys._MEIPASS) / "kquick_pic" / "icons"
+    ICON_DIR = Path(sys._MEIPASS) / "kuick_pic" / "icons"
 else:
     ICON_DIR = Path(__file__).resolve().parent / "icons"
 
@@ -22,7 +22,7 @@ def get_icon_theme_label(theme: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Theme generators (one-time use — run via `python -m kquick_pic.icon`)
+# Theme generators (one-time use — run via `python -m kuick_pic.icon`)
 # ---------------------------------------------------------------------------
 
 
@@ -231,7 +231,7 @@ def _polar(cx: float, cy: float, radius: float, angle: float) -> tuple[float, fl
 
 
 # ---------------------------------------------------------------------------
-# One-shot icon file generation (run: python -m kquick_pic.icon)
+# One-shot icon file generation (run: python -m kuick_pic.icon)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":

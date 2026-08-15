@@ -5,22 +5,22 @@ from pathlib import Path
 
 from gi.repository import GLib
 
-from kquick_pic.timing import log_duration, log_event, now
-from kquick_pic.autostart import AutoStartManager
-from kquick_pic.clipboard import ClipboardManager
-from kquick_pic.config import AppConfig, ConfigManager
-from kquick_pic.hotkey import HotkeyBinding, HotkeyManager
-from kquick_pic.i18n import set_language, t
-from kquick_pic.pin import PinManager
-from kquick_pic.screenshot import ScreenshotCapture
-from kquick_pic.tray import TrayManager
+from kuick_pic.timing import log_duration, log_event, now
+from kuick_pic.autostart import AutoStartManager
+from kuick_pic.clipboard import ClipboardManager
+from kuick_pic.config import AppConfig, ConfigManager
+from kuick_pic.hotkey import HotkeyBinding, HotkeyManager
+from kuick_pic.i18n import set_language, t
+from kuick_pic.pin import PinManager
+from kuick_pic.screenshot import ScreenshotCapture
+from kuick_pic.tray import TrayManager
 
 logger = logging.getLogger(__name__)
 
-PID_FILE = Path.home() / ".config" / "kquick-pic" / "kquick-pic.pid"
+PID_FILE = Path.home() / ".config" / "kuick-pic" / "kuick-pic.pid"
 
 
-class KQuickPicApp:
+class KuickPicApp:
 
     def __init__(self):
         self._config_manager = ConfigManager()
@@ -80,14 +80,14 @@ class KQuickPicApp:
                 action_id="take-screenshot",
                 hotkey=self._config.hotkey,
                 callback=self._on_screenshot_triggered,
-                title="KQuick Pic",
+                title="Kuick Pic",
                 description="Take Screenshot",
             ),
             HotkeyBinding(
                 action_id="show-history",
                 hotkey=self._config.history_hotkey,
                 callback=self._on_history_triggered,
-                title="KQuick Pic",
+                title="Kuick Pic",
                 description="Show Recent Screenshots",
             ),
         ]
@@ -96,7 +96,7 @@ class KQuickPicApp:
 
     def _prepare_area_selector(self) -> bool:
         try:
-            from kquick_pic.area_selector import AreaSelector
+            from kuick_pic.area_selector import AreaSelector
             if self._area_selector is None:
                 self._area_selector = AreaSelector()
             self._area_selector.prepare()
@@ -146,7 +146,7 @@ class KQuickPicApp:
             return False
         self._screenshot_in_progress = True
         try:
-            from kquick_pic.area_selector import AreaSelector
+            from kuick_pic.area_selector import AreaSelector
             if self._area_selector is None:
                 self._area_selector = AreaSelector()
             try:
@@ -232,8 +232,8 @@ class KQuickPicApp:
         assert self._config is not None
         self._history_in_progress = True
         try:
-            from kquick_pic.history import list_recent_screenshots
-            from kquick_pic.history_picker import HistoryPicker
+            from kuick_pic.history import list_recent_screenshots
+            from kuick_pic.history_picker import HistoryPicker
 
             paths = list_recent_screenshots(
                 self._config.resolved_save_path(),
@@ -283,13 +283,13 @@ class KQuickPicApp:
             logger.warning("Failed to clean stale temp screenshots", exc_info=True)
 
     def _on_about(self, widget) -> None:
-        from kquick_pic.about import AboutDialog
+        from kuick_pic.about import AboutDialog
         dialog = AboutDialog()
         dialog.run()
         dialog.destroy()
 
     def _on_settings(self, widget) -> None:
-        from kquick_pic.settings_dialog import SettingsDialog
+        from kuick_pic.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self._config)
         result = dialog.run()
         dialog.destroy()

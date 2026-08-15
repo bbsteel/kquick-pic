@@ -1,4 +1,4 @@
-from kquick_pic.tray import TrayManager
+from kuick_pic.tray import TrayManager
 
 
 class _FakeConfig:

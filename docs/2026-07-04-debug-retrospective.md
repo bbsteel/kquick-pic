@@ -90,6 +90,6 @@
 ## 七、遗留事项与风险
 
 - **Alt+F1 夺回机制**:Plasma 重新登录后启动器挂件可能重新抢占该键,应用每次启动会自动解绑夺回(有日志 `unbinding it`)。若某天热键失灵,先查这条日志。
-- **ScreenShot2 授权是隐性依赖**:`~/.local/share/applications/kquick-pic.desktop` 的 `Exec` 必须保持 `.venv/bin/python3 -m kquick_pic` 且含 `X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2`。授权失效不会报错,只会静默回退 Portal——**弹跳图标复现就是报警信号**。`install.sh` 已固化此配置。
+- **ScreenShot2 授权是隐性依赖**:`~/.local/share/applications/kuick-pic.desktop` 的 `Exec` 必须保持 `.venv/bin/python3 -m kuick_pic` 且含 `X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2`。授权失效不会报错,只会静默回退 Portal——**弹跳图标复现就是报警信号**。`install.sh` 已固化此配置。
 - **仓库根目录与 scripts/ 下各有一个未提交的 `start.sh`**(功能重复,一中文一英文),去留待定。
 - **Route B(Tauri 重构)**:今日修复后 GTK 方案在 Wayland 下已完整可用,重构的紧迫性下降,可重新评估优先级。

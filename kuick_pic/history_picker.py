@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from kquick_pic.timing import log_event, now
+from kuick_pic.timing import log_event, now
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ class HistoryPicker:
             win.set_position(self._Gtk.WindowPosition.CENTER)
 
     def _setup_window(self) -> None:
-        from kquick_pic.i18n import t
+        from kuick_pic.i18n import t
 
         win = self._Gtk.Window(type=self._Gtk.WindowType.TOPLEVEL)
         win.set_decorated(False)

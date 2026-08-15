@@ -5,14 +5,16 @@ import logging
 import os
 import shutil
 
-from kquick_pic.i18n import available_languages, current_language
+from kuick_pic.i18n import available_languages, current_language
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "kquick-pic" / "config.json"
-# Pre-rename layout (quick-pic → kquick-pic).
-LEGACY_CONFIG_DIR = Path.home() / ".config" / "quick-pic"
-LEGACY_CONFIG_PATH = LEGACY_CONFIG_DIR / "config.json"
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "kuick-pic" / "config.json"
+# Newest rename first: kquick-pic → kuick-pic, then the original quick-pic.
+LEGACY_CONFIG_DIRS = (
+    Path.home() / ".config" / "kquick-pic",
+    Path.home() / ".config" / "quick-pic",
+)
 
 VALID_FORMATS = ["png", "jpg"]
 VALID_ICON_THEMES = ["v1", "v2"]
@@ -23,7 +25,7 @@ HISTORY_COUNT_DEFAULT = 5
 
 @dataclass
 class AppConfig:
-    save_path: str = "~/Pictures/kquick-pic"
+    save_path: str = "~/Pictures/kuick-pic"
     format: str = "png"
     hotkey: str = "<ctrl>+<shift>+p"
     icon_theme: str = "v1"
@@ -105,25 +107,28 @@ class ConfigManager:
         logger.info(f"Config saved to {self._path}")
 
     def _maybe_migrate_legacy_config(self) -> None:
-        """Copy ~/.config/quick-pic → ~/.config/kquick-pic once if needed."""
+        """Copy the newest legacy config dir into ~/.config/kuick-pic once."""
         if self._path.exists():
             return
-        if not LEGACY_CONFIG_PATH.is_file():
+        for legacy_dir in LEGACY_CONFIG_DIRS:
+            legacy_path = legacy_dir / "config.json"
+            if not legacy_path.is_file():
+                continue
+            try:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(legacy_path, self._path)
+                legacy_locales = legacy_dir / "locales"
+                new_locales = self._path.parent / "locales"
+                if legacy_locales.is_dir() and not new_locales.exists():
+                    shutil.copytree(legacy_locales, new_locales)
+                logger.info(
+                    "Migrated config from %s to %s",
+                    legacy_path,
+                    self._path,
+                )
+            except OSError:
+                logger.warning("Failed to migrate legacy config", exc_info=True)
             return
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(LEGACY_CONFIG_PATH, self._path)
-            legacy_locales = LEGACY_CONFIG_DIR / "locales"
-            new_locales = self._path.parent / "locales"
-            if legacy_locales.is_dir() and not new_locales.exists():
-                shutil.copytree(legacy_locales, new_locales)
-            logger.info(
-                "Migrated config from %s to %s",
-                LEGACY_CONFIG_PATH,
-                self._path,
-            )
-        except OSError:
-            logger.warning("Failed to migrate legacy config", exc_info=True)
 
     def _validate(self, config: AppConfig) -> bool:
         if config.format not in VALID_FORMATS:

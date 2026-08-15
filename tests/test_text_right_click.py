@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from kquick_pic.area_selector import AreaSelector
-from kquick_pic.annotations import TextAnnotation
+from kuick_pic.area_selector import AreaSelector
+from kuick_pic.annotations import TextAnnotation
 
 
 class FakeDrawing:

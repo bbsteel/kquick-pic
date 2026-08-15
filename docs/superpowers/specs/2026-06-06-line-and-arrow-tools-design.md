@@ -81,10 +81,10 @@ class ArrowAnnotation:
 
 | 文件 | 改动 |
 |---|---|
-| `kquick_pic/area_selector.py` | 新增 dataclass、按钮、手势处理、Cairo 绘制方法 |
-| `kquick_pic/screenshot.py` | `_apply_annotations` 新增直线/箭头渲染分支 |
-| `kquick_pic/locales/en.json` | 两个新 key |
-| `kquick_pic/locales/zh-CN.json` | 两个新 key |
+| `kuick_pic/area_selector.py` | 新增 dataclass、按钮、手势处理、Cairo 绘制方法 |
+| `kuick_pic/screenshot.py` | `_apply_annotations` 新增直线/箭头渲染分支 |
+| `kuick_pic/locales/en.json` | 两个新 key |
+| `kuick_pic/locales/zh-CN.json` | 两个新 key |
 
 ### 不纳入范围
 

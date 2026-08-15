@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from kquick_pic.pin import BORDER_PX, PinManager, PinnedScreenshot
+from kuick_pic.pin import BORDER_PX, PinManager, PinnedScreenshot
 
 
 def _make_png(path: Path, size=(40, 30), color=(20, 40, 60)) -> Path:

@@ -2,13 +2,14 @@ from pathlib import Path
 import logging
 import sys
 
-from kquick_pic.icon import get_icon_path
-from kquick_pic.i18n import t
+from kuick_pic.icon import get_icon_path
+from kuick_pic.i18n import t
 
 logger = logging.getLogger(__name__)
 
 AUTOSTART_DIR = Path.home() / ".config" / "autostart"
-AUTOSTART_FILE = AUTOSTART_DIR / "kquick-pic.desktop"
+AUTOSTART_FILE = AUTOSTART_DIR / "kuick-pic.desktop"
+_LEGACY_AUTOSTART_NAMES = ("kquick-pic.desktop", "quick-pic.desktop")
 
 
 class AutoStartManager:
@@ -18,9 +19,22 @@ class AutoStartManager:
     def apply(self, config) -> None:
         if config.autostart:
             self._write_desktop_entry(config)
+            self._remove_legacy_desktop_files()
         else:
             self._desktop_file.unlink(missing_ok=True)
+            self._remove_legacy_desktop_files()
             logger.info("Autostart disabled")
+
+    def _remove_legacy_desktop_files(self) -> None:
+        parent = self._desktop_file.parent
+        for name in _LEGACY_AUTOSTART_NAMES:
+            legacy = parent / name
+            if legacy == self._desktop_file:
+                continue
+            try:
+                legacy.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Failed to remove leftover autostart file %s", legacy)
 
     def _write_desktop_entry(self, config) -> None:
         if getattr(sys, "frozen", False):
@@ -34,7 +48,7 @@ class AutoStartManager:
             python_path = Path(sys.executable)
             if not python_path.is_absolute():
                 python_path = python_path.resolve()
-            exec_cmd = f"{python_path} -m kquick_pic"
+            exec_cmd = f"{python_path} -m kuick_pic"
             working_dir = str(Path(__file__).resolve().parent.parent)
 
         icon_path = get_icon_path(config.icon_theme).resolve()

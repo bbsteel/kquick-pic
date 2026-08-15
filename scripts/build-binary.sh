@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3.13}"
-OUTPUT_DIR="$ROOT_DIR/dist/kquick-pic"
+OUTPUT_DIR="$ROOT_DIR/dist/kuick-pic"
 
 echo "=== Cleaning previous build ==="
-rm -rf "$OUTPUT_DIR" "$ROOT_DIR/build" "$ROOT_DIR/dist/kquick-pic"
+rm -rf "$OUTPUT_DIR" "$ROOT_DIR/build" "$ROOT_DIR/dist/kuick-pic"
 
 echo "=== Creating build venv ==="
 BUILD_VENV="$ROOT_DIR/.build-venv"
@@ -41,11 +41,11 @@ path.write_text(
     encoding="utf-8",
 )
 PY
-KQUICK_PIC_BUILD_INFO_FILE="$BUILD_INFO_FILE" pyinstaller --distpath "$ROOT_DIR/dist" kquick-pic.spec
+KUICK_PIC_BUILD_INFO_FILE="$BUILD_INFO_FILE" pyinstaller --distpath "$ROOT_DIR/dist" kuick-pic.spec
 
 echo "=== Build complete ==="
 echo "Output: $OUTPUT_DIR/"
-echo "Launch: $OUTPUT_DIR/kquick-pic"
+echo "Launch: $OUTPUT_DIR/kuick-pic"
 echo ""
 echo "System requirements on target machine:"
 echo "  gtk3 python-gobject cairo dbus-glib libnotify libx11 libxtst"

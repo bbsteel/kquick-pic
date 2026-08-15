@@ -13,8 +13,8 @@ import logging
 from pathlib import Path
 from typing import Callable
 
-from kquick_pic.i18n import t
-from kquick_pic.timing import log_event
+from kuick_pic.i18n import t
+from kuick_pic.timing import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class PinnedScreenshot:
         win.set_resizable(False)
         # UTILITY keeps it floating without acting like a full app window.
         win.set_type_hint(self._Gdk.WindowTypeHint.UTILITY)
-        win.set_title(f"KQuick Pic — {self._image_path.name}")
+        win.set_title(f"Kuick Pic — {self._image_path.name}")
         win.get_style_context().add_class("qp-pin-window")
 
         # Double ring: white outer + blue main via margins on nested EventBoxes.

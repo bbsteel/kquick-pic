@@ -8,10 +8,10 @@ import sys
 logger = logging.getLogger(__name__)
 
 if getattr(sys, 'frozen', False):
-    BUILTIN_LOCALE_DIR = Path(sys._MEIPASS) / "kquick_pic" / "locales"
+    BUILTIN_LOCALE_DIR = Path(sys._MEIPASS) / "kuick_pic" / "locales"
 else:
     BUILTIN_LOCALE_DIR = Path(__file__).resolve().parent / "locales"
-USER_LOCALE_DIR = Path.home() / ".config" / "kquick-pic" / "locales"
+USER_LOCALE_DIR = Path.home() / ".config" / "kuick-pic" / "locales"
 
 
 @dataclass(frozen=True)

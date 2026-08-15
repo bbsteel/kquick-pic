@@ -4,7 +4,7 @@
 
 **目标:** 从 `area_selector.py` 中提取标注类型和渲染逻辑到共享模块 `annotations.py`，新增 `LineAnnotation` / `ArrowAnnotation` 及对应工具栏按钮、拖拽手势、预览和最终渲染。
 
-**架构:** 新建 `kquick_pic/annotations.py` 作为唯一的数据模型和 Cairo 渲染源。`area_selector.py`（屏幕标注）和 `screenshot.py`（最终图片）都调用 `render_annotations()` 统一绘制。直线/箭头的拖拽预览使用独立函数 `draw_line_preview` / `draw_arrow_preview`。
+**架构:** 新建 `kuick_pic/annotations.py` 作为唯一的数据模型和 Cairo 渲染源。`area_selector.py`（屏幕标注）和 `screenshot.py`（最终图片）都调用 `render_annotations()` 统一绘制。直线/箭头的拖拽预览使用独立函数 `draw_line_preview` / `draw_arrow_preview`。
 
 **技术栈:** Python, GTK3, Cairo, PangoCairo, dataclasses
 
@@ -46,9 +46,9 @@ annotations.py (新)                 area_selector.py (~850 行)     screenshot.
 
 ---
 
-### Task 1: 创建 `kquick_pic/annotations.py` — 标注 dataclass
+### Task 1: 创建 `kuick_pic/annotations.py` — 标注 dataclass
 
-**文件:** 创建 `kquick_pic/annotations.py`
+**文件:** 创建 `kuick_pic/annotations.py`
 
 - [ ] **Step 1: 创建文件**
 
@@ -103,7 +103,7 @@ class ArrowAnnotation:
 - [ ] **Step 2: 验证导入**
 
 ```bash
-uv run python -c "from kquick_pic.annotations import LineAnnotation, ArrowAnnotation, SelectionResult; print('OK')"
+uv run python -c "from kuick_pic.annotations import LineAnnotation, ArrowAnnotation, SelectionResult; print('OK')"
 ```
 
 预期: `OK`
@@ -111,7 +111,7 @@ uv run python -c "from kquick_pic.annotations import LineAnnotation, ArrowAnnota
 - [ ] **Step 3: 提交**
 
 ```bash
-git add kquick_pic/annotations.py
+git add kuick_pic/annotations.py
 git commit -m "feat: add annotations module with LineAnnotation and ArrowAnnotation dataclasses"
 ```
 
@@ -119,7 +119,7 @@ git commit -m "feat: add annotations module with LineAnnotation and ArrowAnnotat
 
 ### Task 2: 添加共享 Cairo 渲染函数到 `annotations.py`
 
-**文件:** 修改 `kquick_pic/annotations.py`
+**文件:** 修改 `kuick_pic/annotations.py`
 
 - [ ] **Step 1: 追加渲染函数**
 
@@ -257,13 +257,13 @@ def _draw_arrowhead(cr, tip, tail, color, origin_x, origin_y) -> None:
 - [ ] **Step 2: 验证导入**
 
 ```bash
-uv run python -c "from kquick_pic.annotations import render_annotations, draw_line_preview, draw_arrow_preview; print('OK')"
+uv run python -c "from kuick_pic.annotations import render_annotations, draw_line_preview, draw_arrow_preview; print('OK')"
 ```
 
 - [ ] **Step 3: 提交**
 
 ```bash
-git add kquick_pic/annotations.py
+git add kuick_pic/annotations.py
 git commit -m "feat: add shared Cairo rendering functions for all annotation types"
 ```
 
@@ -271,7 +271,7 @@ git commit -m "feat: add shared Cairo rendering functions for all annotation typ
 
 ### Task 3: 更新 `area_selector.py` — 用 import 替换本地 dataclass
 
-**文件:** 修改 `kquick_pic/area_selector.py`
+**文件:** 修改 `kuick_pic/area_selector.py`
 
 - [ ] **Step 1: 删除本地 dataclass 定义（第 10-28 行），替换为 import**
 
@@ -280,7 +280,7 @@ git commit -m "feat: add shared Cairo rendering functions for all annotation typ
 在第 11 行位置插入：
 
 ```python
-from kquick_pic.annotations import SelectionResult, RectangleAnnotation, TextAnnotation, LineAnnotation, ArrowAnnotation
+from kuick_pic.annotations import SelectionResult, RectangleAnnotation, TextAnnotation, LineAnnotation, ArrowAnnotation
 ```
 
 - [ ] **Step 2: 更新类型注解**
@@ -297,13 +297,13 @@ self._annotations: list[RectangleAnnotation | TextAnnotation | LineAnnotation | 
 - [ ] **Step 3: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; print('OK')"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; print('OK')"
 ```
 
 - [ ] **Step 4: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "refactor: replace local annotation dataclasses with imports from annotations module"
 ```
 
@@ -311,17 +311,17 @@ git commit -m "refactor: replace local annotation dataclasses with imports from 
 
 ### Task 4: 更新 `screenshot.py` — 用共享渲染函数替换重复代码
 
-**文件:** 修改 `kquick_pic/screenshot.py`
+**文件:** 修改 `kuick_pic/screenshot.py`
 
 - [ ] **Step 1: 替换 import**
 
 第 67 行，将：
 ```python
-from kquick_pic.area_selector import RectangleAnnotation, TextAnnotation
+from kuick_pic.area_selector import RectangleAnnotation, TextAnnotation
 ```
 改为：
 ```python
-from kquick_pic.annotations import render_annotations
+from kuick_pic.annotations import render_annotations
 ```
 
 - [ ] **Step 2: 替换 `_apply_annotations` 方法体（第 63-92 行）**
@@ -352,13 +352,13 @@ def _apply_annotations(image, annotations) -> None:
 - [ ] **Step 4: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.screenshot import ScreenshotCapture; print('OK')"
+uv run python -c "from kuick_pic.screenshot import ScreenshotCapture; print('OK')"
 ```
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add kquick_pic/screenshot.py
+git add kuick_pic/screenshot.py
 git commit -m "refactor: use shared render_annotations in screenshot.py"
 ```
 
@@ -366,7 +366,7 @@ git commit -m "refactor: use shared render_annotations in screenshot.py"
 
 ### Task 5: 添加 i18n key
 
-**文件:** 修改 `kquick_pic/locales/en.json`、`kquick_pic/locales/zh-CN.json`
+**文件:** 修改 `kuick_pic/locales/en.json`、`kuick_pic/locales/zh-CN.json`
 
 - [ ] **Step 1: 添加英文 key**
 
@@ -391,8 +391,8 @@ git commit -m "refactor: use shared render_annotations in screenshot.py"
 ```bash
 uv run python -c "
 import json
-json.load(open('kquick_pic/locales/en.json'))
-json.load(open('kquick_pic/locales/zh-CN.json'))
+json.load(open('kuick_pic/locales/en.json'))
+json.load(open('kuick_pic/locales/zh-CN.json'))
 print('OK')
 "
 ```
@@ -400,7 +400,7 @@ print('OK')
 - [ ] **Step 4: 提交**
 
 ```bash
-git add kquick_pic/locales/en.json kquick_pic/locales/zh-CN.json
+git add kuick_pic/locales/en.json kuick_pic/locales/zh-CN.json
 git commit -m "feat: add i18n keys for line and arrow tools"
 ```
 
@@ -408,7 +408,7 @@ git commit -m "feat: add i18n keys for line and arrow tools"
 
 ### Task 6: 添加直线/箭头切换按钮到工具栏
 
-**文件:** 修改 `kquick_pic/area_selector.py`
+**文件:** 修改 `kuick_pic/area_selector.py`
 
 - [ ] **Step 1: 在 `__init__` 属性声明块中添加成员变量**
 
@@ -471,7 +471,7 @@ self._arrow_button_label = arrow_button_label
 - [ ] **Step 7: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; a = AreaSelector(); print(hasattr(a, '_line_button'))"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; a = AreaSelector(); print(hasattr(a, '_line_button'))"
 ```
 
 预期: `True`
@@ -479,7 +479,7 @@ uv run python -c "from kquick_pic.area_selector import AreaSelector; a = AreaSel
 - [ ] **Step 8: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "feat: add line and arrow toggle buttons to toolbar"
 ```
 
@@ -487,7 +487,7 @@ git commit -m "feat: add line and arrow toggle buttons to toolbar"
 
 ### Task 7: 更新 `_on_tool_toggled` 为 4 选 1 互斥
 
-**文件:** 修改 `kquick_pic/area_selector.py` — `_on_tool_toggled` 方法（第 557-566 行）
+**文件:** 修改 `kuick_pic/area_selector.py` — `_on_tool_toggled` 方法（第 557-566 行）
 
 - [ ] **Step 1: 替换方法体**
 
@@ -513,13 +513,13 @@ def _on_tool_toggled(self, button, tool_name: str) -> None:
 - [ ] **Step 2: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; print('OK')"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; print('OK')"
 ```
 
 - [ ] **Step 3: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "feat: support 4-way mutual exclusion for tool toggle buttons"
 ```
 
@@ -527,7 +527,7 @@ git commit -m "feat: support 4-way mutual exclusion for tool toggle buttons"
 
 ### Task 8: 添加直线/箭头手势处理
 
-**文件:** 修改 `kquick_pic/area_selector.py`
+**文件:** 修改 `kuick_pic/area_selector.py`
 
 - [ ] **Step 1: 在 `_on_button_press` 中添加 line/arrow elif**
 
@@ -630,7 +630,7 @@ def _relative_arrow_within_selection(
 - [ ] **Step 5: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; a = AreaSelector(); print(hasattr(a, '_relative_line_within_selection'))"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; a = AreaSelector(); print(hasattr(a, '_relative_line_within_selection'))"
 ```
 
 预期: `True`
@@ -638,7 +638,7 @@ uv run python -c "from kquick_pic.area_selector import AreaSelector; a = AreaSel
 - [ ] **Step 6: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "feat: add line and arrow gesture handling"
 ```
 
@@ -646,7 +646,7 @@ git commit -m "feat: add line and arrow gesture handling"
 
 ### Task 9: 添加拖拽预览到 `_on_draw_overlay`
 
-**文件:** 修改 `kquick_pic/area_selector.py` — `_on_draw_overlay` 方法
+**文件:** 修改 `kuick_pic/area_selector.py` — `_on_draw_overlay` 方法
 
 - [ ] **Step 1: 在 `_pending_text_rect` 预览块（第 425 行后）添加 line/arrow 预览**
 
@@ -655,27 +655,27 @@ if self._dragging and self._gesture_kind == "line" and self._selection_rect is n
     sx, sy, _, _ = self._selection_rect
     start_rel = (int(self._start_x - sx), int(self._start_y - sy))
     end_rel = (int(self._end_x - sx), int(self._end_y - sy))
-    from kquick_pic.annotations import draw_line_preview
+    from kuick_pic.annotations import draw_line_preview
     draw_line_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=True)
 
 if self._dragging and self._gesture_kind == "arrow" and self._selection_rect is not None:
     sx, sy, _, _ = self._selection_rect
     start_rel = (int(self._start_x - sx), int(self._start_y - sy))
     end_rel = (int(self._end_x - sx), int(self._end_y - sy))
-    from kquick_pic.annotations import draw_arrow_preview
+    from kuick_pic.annotations import draw_arrow_preview
     draw_arrow_preview(cr, start_rel, end_rel, self._selected_color(), sx, sy, dashed=True)
 ```
 
 - [ ] **Step 2: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; print('OK')"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; print('OK')"
 ```
 
 - [ ] **Step 3: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "feat: add line and arrow drag preview rendering"
 ```
 
@@ -683,7 +683,7 @@ git commit -m "feat: add line and arrow drag preview rendering"
 
 ### Task 10: 十字光标与拖拽区域更新
 
-**文件:** 修改 `kquick_pic/area_selector.py`
+**文件:** 修改 `kuick_pic/area_selector.py`
 
 - [ ] **Step 1: `_update_idle_cursor`（第 791 行）**
 
@@ -725,13 +725,13 @@ if gesture_kind in ("line", "arrow"):
 - [ ] **Step 4: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; print('OK')"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; print('OK')"
 ```
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "feat: crosshair cursor and redraw regions for line/arrow tools"
 ```
 
@@ -739,7 +739,7 @@ git commit -m "feat: crosshair cursor and redraw regions for line/arrow tools"
 
 ### Task 11: 将 `_draw_annotations` 替换为共享渲染器
 
-**文件:** 修改 `kquick_pic/area_selector.py`
+**文件:** 修改 `kuick_pic/area_selector.py`
 
 - [ ] **Step 1: 替换 `_draw_annotations` 方法体（第 684-689 行）**
 
@@ -748,7 +748,7 @@ def _draw_annotations(self, cr) -> None:
     if self._selection_rect is None:
         return
     sx, sy, _, _ = self._selection_rect
-    from kquick_pic.annotations import render_annotations
+    from kuick_pic.annotations import render_annotations
     render_annotations(cr, self._annotations, origin_x=sx, origin_y=sy)
 ```
 
@@ -768,7 +768,7 @@ self._draw_rectangle_annotation(
 改为带 sx, sy 的调用（`_on_draw_overlay` 中第 380 行已有 `sx, sy`）：
 
 ```python
-from kquick_pic.annotations import _draw_rectangle_annotation as _dra
+from kuick_pic.annotations import _draw_rectangle_annotation as _dra
 _dra(cr, RectangleAnnotation(rect=preview_rect, color=self._selected_color()), sx, sy, dashed=True)
 ```
 
@@ -785,7 +785,7 @@ self._draw_rectangle_annotation(
 ```
 改为：
 ```python
-from kquick_pic.annotations import _draw_rectangle_annotation as _dra
+from kuick_pic.annotations import _draw_rectangle_annotation as _dra
 _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_color()), sx, sy, dashed=True)
 ```
 
@@ -796,13 +796,13 @@ _dra(cr, RectangleAnnotation(rect=self._pending_text_rect, color=self._selected_
 - [ ] **Step 4: 验证**
 
 ```bash
-uv run python -c "from kquick_pic.area_selector import AreaSelector; print('OK')"
+uv run python -c "from kuick_pic.area_selector import AreaSelector; print('OK')"
 ```
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add kquick_pic/area_selector.py
+git add kuick_pic/area_selector.py
 git commit -m "refactor: use shared render_annotations in area_selector's _draw_annotations"
 ```
 
@@ -817,7 +817,7 @@ git commit -m "refactor: use shared render_annotations in area_selector's _draw_
 ```python
 import cairo
 import pytest
-from kquick_pic.annotations import (
+from kuick_pic.annotations import (
     LineAnnotation,
     ArrowAnnotation,
     RectangleAnnotation,
@@ -956,13 +956,13 @@ uv run pytest tests/ -v
 - [ ] **Step 2: 验证完整导入链**
 
 ```bash
-uv run python -c "from kquick_pic.app import KQuickPicApp; print('OK')"
+uv run python -c "from kuick_pic.app import KuickPicApp; print('OK')"
 ```
 
 - [ ] **Step 3: 验证 i18n**
 
 ```bash
-uv run python -c "from kquick_pic.i18n import t; print(t('selector.draw_line')); print(t('selector.draw_arrow'))"
+uv run python -c "from kuick_pic.i18n import t; print(t('selector.draw_line')); print(t('selector.draw_arrow'))"
 ```
 
 预期: `画线` / `画箭头`
@@ -986,8 +986,8 @@ uv run pytest tests/test_annotations.py -v
 
 # 最终:
 uv run pytest tests/ -v
-uv run python -c "from kquick_pic.app import KQuickPicApp; print('OK')"
-uv run python -c "from kquick_pic.i18n import t; print(t('selector.draw_line'), t('selector.draw_arrow'))"
+uv run python -c "from kuick_pic.app import KuickPicApp; print('OK')"
+uv run python -c "from kuick_pic.i18n import t; print(t('selector.draw_line'), t('selector.draw_arrow'))"
 ```
 
 手动验证: 启动应用，截图后确认 4 个工具（画框、文字、直线、箭头）互斥切换正常，拖拽绘制含虚线预览，松开后渲染正确，撤销功能正常，最终保存的图片包含所有标注。

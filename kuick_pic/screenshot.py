@@ -2,7 +2,7 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
-from kquick_pic.timing import log_debug_event, log_duration, log_event, now
+from kuick_pic.timing import log_debug_event, log_duration, log_event, now
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class ScreenshotCapture:
     def _apply_annotations(image, annotations) -> None:
         import cairo
         from PIL import Image
-        from kquick_pic.annotations import render_annotations
+        from kuick_pic.annotations import render_annotations
 
         image_rgba = image.convert("RGBA")
         raw = bytearray(image_rgba.tobytes("raw", "BGRA"))
@@ -118,12 +118,12 @@ class ScreenshotCapture:
         save_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-        filename = f"kquick-pic-{timestamp}.{config.format}"
+        filename = f"kuick-pic-{timestamp}.{config.format}"
         filepath = save_dir / filename
 
         if filepath.exists():
             ms = datetime.now().strftime("%f")[:3]
-            filename = f"kquick-pic-{timestamp}-{ms}.{config.format}"
+            filename = f"kuick-pic-{timestamp}-{ms}.{config.format}"
             filepath = save_dir / filename
 
         return filepath

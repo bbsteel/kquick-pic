@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from kquick_pic.about import (
+from kuick_pic.about import (
     ABOUT_FIELD_LABEL_KEYS,
     collect_build_info,
     collect_system_info,
@@ -117,7 +117,7 @@ def test_format_about_text_is_copyable_plain_text():
 
     text = format_about_text(build, system)
 
-    assert text.startswith("KQuick Pic\n")
+    assert text.startswith("Kuick Pic\n")
     assert "Version: 0.1.0\n" in text
     assert "Commit: unknown\n" in text
     assert "Platform: Linux-test\n" in text

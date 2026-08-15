@@ -7,8 +7,8 @@ no-op and the confirm/cancel buttons landed off-screen.
 
 from types import SimpleNamespace
 
-from kquick_pic import area_selector
-from kquick_pic.area_selector import AreaSelector
+from kuick_pic import area_selector
+from kuick_pic.area_selector import AreaSelector
 
 
 class FakeEditor:

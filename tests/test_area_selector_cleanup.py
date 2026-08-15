@@ -1,6 +1,6 @@
 import inspect
 
-from kquick_pic.area_selector import AreaSelector
+from kuick_pic.area_selector import AreaSelector
 
 
 class FakeWindow:
